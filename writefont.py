@@ -419,6 +419,8 @@ class Font(object):
         widths = []
         offsets = []
         offset = 0
+        startchar = text[0]
+        numchars = len(text)
 
         for char in text:
             glyph = self.glyph_for_character(char)
@@ -468,6 +470,7 @@ class Font(object):
         print(f" * Converted from {font_file} using:")
         print(f" *   {cmd_line}")
         print(" */")
+        print('#include "font.h"')
         print()
         print(f'// MAP = "{char_map}"')
         print("// BPP = 1")
@@ -504,35 +507,20 @@ class Font(object):
         print(wrap_hex(byte_values))
         print("};\n")
 
-        print( "struct mwcfont {")
-        print( "    char *name;")
-        print( "    int maxwidth;")
-        print( "    int height;")
-        print( "    int ascent;")
-        print( "    int firstchar;")
-        print( "    int size;")
-        print( "    unsigned char *bits;")
-        if bytes_required == 1:
-            print( "    unsigned char *offset;")
-        if bytes_required == 2:
-            print( "    unsigned short *offset;")
-        if bytes_required == 4:
-            print( "    unsigned int *offset;")
-        print( "    unsigned char *width;")
-        print( "    int defaultchar;")
-        print( "    int bits_size;")
-        print( "} ttfont = {")
+        print( "struct font font_ttf = {")
         print( "    0,")
         print(f"    {max_width},")
         print(f"    {height},")
         print(f"    {height-baseline},")
-        print( "    0,")
-        print( "    0,")
+        print(f"    {ord(startchar)},     /* start char */")
+        print(f"    {numchars},     /* # chars */")
         print( "    bits,")
-        print( "    offsets,")
+        print( "    (unsigned char *)offsets,")
         print( "    widths,")
+        print(f"    {ord(startchar)},     /* default char */")
         print( "    0,")
-        print( "    0")
+        print( "    1,      /* bits_width */")
+        print(f"    {bytes_required}       /* offset_width */")
         print( "};")
 
 def main():

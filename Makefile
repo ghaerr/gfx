@@ -5,7 +5,10 @@ LDLIBS += -lSDL2
 
 all: draw
 
-draw: draw.o rom8x16.o
+file.c:
+	python3 writefont.py cour.ttf 16 -c 0x20-0x7e > file.c
+
+draw: draw.o rom8x16.o file.o
 	$(CC) -o $@ $^ $(LDLIBS)
 
 clean:

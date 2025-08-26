@@ -356,8 +356,7 @@ static void color_from_attr(Drawable *dp, unsigned int attr, pixel_t *pfg, pixel
 static void drawbitmap(Drawable *dp, struct console *con, int c, unsigned int attr,
     int x, int y, int drawbg)
 {
-    int minx = x;
-    int maxx = x + con->char_width - 1;
+    int minx, maxx;
     int height = con->char_height;
     Font *font = con->font;
     int bitcount = 0;
@@ -366,8 +365,28 @@ static void drawbitmap(Drawable *dp, struct console *con, int c, unsigned int at
     Varptr imagebits;
     pixel_t fgpixel, bgpixel;
 
-    imagebits.ptr8 = font->bits.ptr8 + font->height * c * font->bits_width;
+    c -= font->firstchar;
+    if (c < 0 || c > font->size)
+        c = font->defaultchar - font->firstchar;
+    if (font->offset_width) {
+        switch (font->offset_width) {
+        case 1:
+            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr8[c];
+            break;
+        case 2:
+            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr16[c];
+            break;
+        case 4:
+        default:
+            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr32[c];
+            break;
+        }
+    } else
+        imagebits.ptr8 = font->bits.ptr8 + c * font->bits_width * font->height;
     color_from_attr(dp, attr, &fgpixel, &bgpixel);
+
+    minx = x;
+    maxx = font->width? (x + font->width[c] - 1): (x + font->maxwidth - 1);
     while (height > 0) {
         uint32_t *pixel32;
         uint16_t *pixel16;
@@ -431,6 +450,11 @@ static void clear_line(struct console *con, int x1, int x2, int y, unsigned char
     for (x = x1; x <= x2; x++)
         con->text_ram[y * con->cols + x] = ' ' | (attr << 8);
     update_dirty_region(con, x1, y, x2-x1+1, 1);
+#if PROPORTIONAL_CONSOLE
+    /* FIXME somewhat kluge to clear full line when using proportional fonts */
+    if (con->font->width)
+        update_dirty_region(con, 0, 0, con->cols, con->lines);
+#endif
 }
 
 /* scroll adapter RAM up from line y1 up to and including line y2 */
@@ -517,6 +541,22 @@ static void draw_video_ram(Drawable *dp, struct console *con, int x1, int y1,
 void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 {
     if (con->update.w >= 0 || con->update.h >= 0) {
+#if PROPORTIONAL_CONSOLE
+        /* FIXME kluge to clear background for proportional fonts from scrollup */
+        if (con->update.x == 0 && con->update.y == 0 &&
+            con->update.w == con->cols && con->update.h == con->lines) {
+            extern void draw_filled_rect(Drawable *dp, int x1, int y1, int x2, int y2);
+            pixel_t color = dp->color;
+            dp->color = 0;
+            draw_filled_rect(dp,
+                x + con->update.x * con->char_width,
+                y + con->update.y * con->char_height,
+                x + con->update.w * con->char_width,
+                y + con->update.h * con->char_height);
+            dp->color = color;
+        }
+#endif
+
         /* draw text bitmaps from adaptor RAM */
         draw_video_ram(dp, con, x, y,
             con->update.x, con->update.y, con->update.w, con->update.h);
@@ -580,11 +620,13 @@ Font *console_load_font(struct console *con, char *path)
 {
     Font *font = NULL;
     extern Font font_rom8x16;
+    extern Font font_ttf;           /* FIXME for testing writeconv.py */
 
     if (path)
         font = font_create(path);
     if (!font)
-        font = &font_rom8x16;       /* default font rom8x16 */
+        //font = &font_rom8x16;       /* default font rom8x16 */
+        font = &font_ttf;
     con->font = font;
     con->char_height = font->height;
     con->char_width = font->maxwidth;
