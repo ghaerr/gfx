@@ -99,6 +99,7 @@ import argparse
 import bisect
 import itertools
 import freetype
+import struct
 
 
 def to_int(string):
@@ -169,22 +170,28 @@ def wrap_bytes(lst, items_per_line=16):
     return "    b'" + "'\\\n    b'".join(lines) + "'"
 
 
-def wrap_longs(lst, items_per_line=16):
-    """
-    Wrap a list of long integers into a formatted string representation.
-
-    Args:
-        lst (list): The list of long integers to wrap.
-        items_per_line (int): The number of long integers to include per line (default: 16).
-
-    Returns:
-        str: A formatted string representation of the wrapped long integers.
-    """
+def wrap_short(lst, items_per_line=8):
     lines = [
-        "".join(f"\\x{x:02x}" for x in lst[i : i + items_per_line])
+        "".join(f"0x{x:04x}," for x in lst[i : i + items_per_line])
         for i in range(0, len(lst), items_per_line)
     ]
-    return "    b'" + "'\\\n    b'".join(lines) + "'"
+    return "    " + "\n    ".join(lines)
+
+
+def wrap_long(lst, items_per_line=4):
+    lines = [
+        "".join(f"0x{x:08x}," for x in lst[i : i + items_per_line])
+        for i in range(0, len(lst), items_per_line)
+    ]
+    return "    " + "\n    ".join(lines)
+
+
+def wrap_hex(lst, items_per_line=8):
+    lines = [
+        "".join(f"0x{x:02x}," for x in lst[i : i + items_per_line])
+        for i in range(0, len(lst), items_per_line)
+    ]
+    return "    " + "\n    ".join(lines)
 
 
 class Bitmap(object):
@@ -203,16 +210,19 @@ class Bitmap(object):
         """Return a string representation of the bitmap's pixels."""
         rows = ""
         for y in range(self.height):
+            row = "// "
             for x in range(self.width):
-                rows += "#" if self.pixels[y * self.width + x] else "."
-            rows += "\n"
+                row += "#" if self.pixels[y * self.width + x] else "."
+            row += "\n"
+            rows += row
         return rows
 
     def bit_string(self):
         """Return a binary string representation of the bitmap's pixels."""
+        pitch = (self.width + 7) & ~7
         return "".join(
-            "1" if self.pixels[y * self.width + x] else "0"
-            for y, x in itertools.product(range(self.height), range(self.width))
+            "1" if x < self.width and self.pixels[y * self.width + x] else "0"
+            for y, x in itertools.product(range(self.height), range(pitch))
         )
 
     def bitblt(self, src, x, y):
@@ -436,11 +446,13 @@ class Font(object):
             # on the baseline as intended.
             y = height - glyph.ascent - baseline
             outbuffer.bitblt(glyph.bitmap, left, y)
+            print(f"// index: {ord(char)} '{char}' {char_width}x{height}")
+            print(outbuffer)
 
             # convert bitmap to ascii bitmap string
             bit_string = outbuffer.bit_string()
             bits.append(bit_string)
-            offset += len(bit_string)
+            offset += len(bit_string) // 8
 
         # join all the bitmap strings together
         bit_string = "".join(bits)
@@ -452,38 +464,76 @@ class Font(object):
         max_width = max(widths)
 
         # write python module source
-        print("# -*- coding: utf-8 -*-")
-        print(f"# Converted from {font_file} using:")
-        print(f"#     {cmd_line}")
+        print("/*")
+        print(f" * Converted from {font_file} using:")
+        print(f" *   {cmd_line}")
+        print(" */")
         print()
-        print(f'MAP = "{char_map}"')
-        print("BPP = 1")
-        print(f"HEIGHT = {height}")
-        print(f"MAX_WIDTH = {max_width}")
-        print("_WIDTHS = \\")
-        print(wrap_bytes(widths))
-        print()
+        print(f'// MAP = "{char_map}"')
+        print("// BPP = 1")
+        print("static unsigned char widths[] = {")
+        print(wrap_hex(widths))
+        print("};\n")
 
         byte_offsets = bytearray()
         bytes_table = [0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF]
         bytes_required = bisect.bisect_left(bytes_table, offset, 0, 3) + 1
+        if bytes_required == 3:
+            bytes_required = 4
         for offset in offsets:
-            byte_offsets.extend(offset.to_bytes(bytes_required, "big"))
+            byte_offsets.extend(offset.to_bytes(bytes_required, "little"))
 
-        print(f"OFFSET_WIDTH = {bytes_required}")
-        print("_OFFSETS = \\")
-        print(wrap_longs(byte_offsets))
-        print()
+        print(f"// OFFSET_WIDTH = {bytes_required}")
+        if bytes_required == 1:
+            print("static unsigned char offsets[] = {")
+            print(wrap_hex(byte_offsets))
+        if bytes_required == 2:
+            print("static unsigned short offsets[] = {")
+            byte_offsets16 = struct.unpack("<" + "H" * (len(byte_offsets) // 2), byte_offsets)
+            print(wrap_short(byte_offsets16))
+        if bytes_required == 4:
+            print("static unsigned int offsets[] = {")
+            byte_offsets32 = struct.unpack("<" + "I" * (len(byte_offsets) // 4), byte_offsets)
+            print(wrap_long(byte_offsets32))
+        print("};\n")
 
-        print("_BITMAPS =\\")
+        print("static unsigned char bits[] = {")
         byte_values = [
             int(bit_string[i : i + 8], 2) for i in range(0, len(bit_string), 8)
         ]
-        print(wrap_bytes(byte_values))
-        print("\nWIDTHS = memoryview(_WIDTHS)")
-        print("OFFSETS = memoryview(_OFFSETS)")
-        print("BITMAPS = memoryview(_BITMAPS)")
+        print(wrap_hex(byte_values))
+        print("};\n")
 
+        print( "struct mwcfont {")
+        print( "    char *name;")
+        print( "    int maxwidth;")
+        print( "    int height;")
+        print( "    int ascent;")
+        print( "    int firstchar;")
+        print( "    int size;")
+        print( "    unsigned char *bits;")
+        if bytes_required == 1:
+            print( "    unsigned char *offset;")
+        if bytes_required == 2:
+            print( "    unsigned short *offset;")
+        if bytes_required == 4:
+            print( "    unsigned int *offset;")
+        print( "    unsigned char *width;")
+        print( "    int defaultchar;")
+        print( "    int bits_size;")
+        print( "} ttfont = {")
+        print( "    0,")
+        print(f"    {max_width},")
+        print(f"    {height},")
+        print(f"    {height-baseline},")
+        print( "    0,")
+        print( "    0,")
+        print( "    bits,")
+        print( "    offsets,")
+        print( "    widths,")
+        print( "    0,")
+        print( "    0")
+        print( "};")
 
 def main():
     """
