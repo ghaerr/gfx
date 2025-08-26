@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <SDL2/SDL.h>
+#include "font.h"
 
 /* supported framebuffer pixel formats */
 #define MWPF_DEFAULT       MWPF_TRUECOLORARGB
@@ -63,8 +64,7 @@ struct console {
     int lines;              /* # text rows */
     int char_width;         /* glyph width in pixels */
     int char_height;        /* glyph height in pixels */
-    uint8_t *fontbits;      /* glyph bits (currently for 256 glyphs) */
-    int font_bps;           /* glyph bits bytes per scanline */
+    Font *font;             /* associated font */
 
     int curx;               /* cursor x position */
     int cury;               /* cursor y position */
@@ -359,24 +359,25 @@ static void drawbitmap(Drawable *dp, struct console *con, int c, unsigned int at
     int minx = x;
     int maxx = x + con->char_width - 1;
     int height = con->char_height;
+    Font *font = con->font;
     int bitcount = 0;
     uint16_t word = 0;
-    uint16_t bitmask = (con->font_bps == 1)? 0x80: 0x8000;
-    uint8_t *imagebits = con->fontbits + con->char_height * c * con->font_bps;
-    uint16_t *imagebits16 = (uint16_t *)imagebits;
+    uint16_t bitmask = (font->bits_width == 1)? 0x80: 0x8000;
+    Varptr imagebits;
     pixel_t fgpixel, bgpixel;
 
+    imagebits.ptr8 = font->bits.ptr8 + font->height * c * font->bits_width;
     color_from_attr(dp, attr, &fgpixel, &bgpixel);
     while (height > 0) {
         uint32_t *pixel32;
         uint16_t *pixel16;
         if (bitcount <= 0) {
-            if (con->font_bps == 1) {
+            if (font->bits_width == 1) {
                 bitcount = 8;
-                word = *imagebits++;
+                word = *imagebits.ptr8++;
             } else {
                 bitcount = 16;
-                word = *imagebits16++;
+                word = *imagebits.ptr16++;
             }
             pixel32 = (uint32_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
             pixel16 = (uint16_t *)pixel32;
@@ -539,37 +540,61 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
  * load console font, works for:
  *  *.Fnn ROM font files e.g. VGA-ROM.F16, DOSJ-437.F19
  */
-void *console_load_font(struct console *con, char *path)
+Font *font_create(char *path)
 {
     int width = 8;
     int height = 16;
     int fd, size;
     char *s;
-    void *bits;
+    Font *font;
 
     s = strrchr(path, '.');
     if (s && s[1] == 'F')
         height = atoi(s+2);
-    size = height * 256;
     if (width > 8) size *= 2;
+    size = height * 256;
+
     fd = open(path, O_RDONLY);
-    if (fd < 0) { printf("Can't open %s\n", path); return 0; }
+    if (fd < 0) {
+        printf("Can't open %s\n", path);
+        return 0;
+    }
     printf("Loading %s %dx%d size %d\n", path, width, height, size);
-    bits = malloc(size);
-    if (read(fd, bits, size) != size) { printf("read error"); return 0; }
+    font = malloc(sizeof(Font)+size);
+    memset(font, 0, sizeof(Font));
+    if (read(fd, font->data, size) != size) {
+        printf("read error");
+        return 0;
+    }
     close(fd);
-    con->char_width = width;
-    con->char_height = height;
-    con->fontbits = bits;
-    con->font_bps = (width > 8)? 2: 1;
-    return bits;
+
+    font->maxwidth = width;
+    font->height = height;
+    font->size = 256;
+    font->bits.ptr8 = font->data;
+    font->bits_width = (width > 8)? 2: 1;
+    return font;
+}
+
+Font *console_load_font(struct console *con, char *path)
+{
+    Font *font = NULL;
+    extern Font font_rom8x16;
+
+    if (path)
+        font = font_create(path);
+    if (!font)
+        font = &font_rom8x16;       /* default font rom8x16 */
+    con->font = font;
+    con->char_height = font->height;
+    con->char_width = font->maxwidth;
+    return font;
 }
 
 struct console *create_console(int width, int height)
 {
     struct console *con;
     int size, i;
-    extern uint8_t rom8x16_bits[];     /* MWIMAGEBITS */
 
     size = sizeof(struct console) + width * height * sizeof(uint16_t);
     con = malloc(size);
@@ -578,13 +603,10 @@ struct console *create_console(int width, int height)
     memset(con, 0, sizeof(struct console));
     con->cols = width;
     con->lines = height;
-    con->fontbits = rom8x16_bits;       /* default console font */
-    con->font_bps = 2;                  /* MW compiled fonts are 2 bytes per scanline */
-    con->char_width = 8;
-    con->char_height = 16;
+    console_load_font(con, NULL);       /* loads rom8x16 */
     //console_load_font(con, "VGA-ROM.F16");
     //console_load_font(con, "COMPAQP3.F16");
-    console_load_font(con, "DOSV-437.F16");
+    //console_load_font(con, "DOSV-437.F16");
     //console_load_font(con, "DOSJ-437.F19");
     //console_load_font(con, "CGA.F08");
 
@@ -1036,6 +1058,7 @@ int main(int ac, char **av)
     if (!(con = create_console(20, 10))) exit(4);
 
     for (;;) {
+#if 0
         Rect dr;
         dr.x = 0;
         dr.y = 0;
@@ -1046,6 +1069,7 @@ int main(int ac, char **av)
             break;
         sdl_draw(bb, 0, 0, 0, 0);
         continue;
+#endif
         Rect update = con->update;          /* save update rect for dup console */
         draw_console(con, bb, 5*8, 5*15, 1);
         con->update = update;
