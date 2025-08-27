@@ -220,10 +220,16 @@ class Bitmap(object):
     def bit_string(self):
         """Return a binary string representation of the bitmap's pixels."""
         pitch = (self.width + 7) & ~7
-        return "".join(
-            "1" if x < self.width and self.pixels[y * self.width + x] else "0"
-            for y, x in itertools.product(range(self.height), range(pitch))
-        )
+        if bpp == 1:
+            return "".join(
+                "1" if x < self.width and self.pixels[y * self.width + x] else "0"
+                for y, x in itertools.product(range(self.height), range(pitch))
+            )
+        else:
+            return "".join(
+                f"{self.pixels[y * self.width + x]:02x}"
+                for y, x in itertools.product(range(self.height), range(self.width))
+            )
 
     def bitblt(self, src, x, y):
         """Copy all pixels from `src` into this bitmap"""
@@ -321,23 +327,26 @@ class Glyph(object):
             # determines where we'll read the next batch of pixels from.
             num_bits_done = byte_index * 8
 
-            # Pre-compute where to write the pixels that we're going
-            # to unpack from the current byte in the glyph bitmap.
-            rowstart = y * bitmap.width + byte_index * 8
+            if bpp == 8:
+                data[y * bitmap.width + byte_index] = byte_value
+            else:
+                # Pre-compute where to write the pixels that we're going
+                # to unpack from the current byte in the glyph bitmap.
+                rowstart = y * bitmap.width + byte_index * 8
 
-            # Iterate over every bit (=pixel) that's still a part of the
-            # output bitmap. Sometimes we're only unpacking a fraction of a
-            # byte because glyphs may not always fit on a byte boundary. So
-            # we make sure to stop if we unpack past the current row of
-            # pixels.
-            for bit_index in range(min(8, bitmap.width - num_bits_done)):
-                # Unpack the next pixel from the current glyph byte.
-                bit = byte_value & (1 << (7 - bit_index))
+                # Iterate over every bit (=pixel) that's still a part of the
+                # output bitmap. Sometimes we're only unpacking a fraction of a
+                # byte because glyphs may not always fit on a byte boundary. So
+                # we make sure to stop if we unpack past the current row of
+                # pixels.
+                for bit_index in range(min(8, bitmap.width - num_bits_done)):
+                    # Unpack the next pixel from the current glyph byte.
+                    bit = byte_value & (1 << (7 - bit_index))
 
-                # Write the pixel to the output bytearray. We ensure that
-                # `off` pixels have a value of 0 and `on` pixels have a
-                # value of 1.
-                data[rowstart + bit_index] = 1 if bit else 0
+                    # Write the pixel to the output bytearray. We ensure that
+                    # `off` pixels have a value of 0 and `on` pixels have a
+                    # value of 1.
+                    data[rowstart + bit_index] = 1 if bit else 0
 
         return data
 
@@ -363,9 +372,12 @@ class Font(object):
 
         # Let FreeType load the glyph for the given character and tell it to
         # render a monochromatic bitmap representation.
-        self.face.load_char(
-            char, freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_MONO
-        )
+        if bpp == 1:
+            flags = freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_MONO
+        else:
+            flags = freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_NORMAL
+
+        self.face.load_char(char, flags)
 
         return Glyph.from_glyphslot(self.face.glyph)
 
@@ -454,7 +466,10 @@ class Font(object):
             # convert bitmap to ascii bitmap string
             bit_string = outbuffer.bit_string()
             bits.append(bit_string)
-            offset += len(bit_string) // 8
+            if bpp == 1:
+                offset += len(bit_string) // 8
+            else:
+                offset += len(bit_string) // 2
 
         # join all the bitmap strings together
         bit_string = "".join(bits)
@@ -472,38 +487,43 @@ class Font(object):
         print(" */")
         print('#include "font.h"')
         print()
+        print(f"// BPP = {bpp}")
         print(f'// MAP = "{char_map}"')
-        print("// BPP = 1")
         print("static unsigned char widths[] = {")
         print(wrap_hex(widths))
         print("};\n")
 
         byte_offsets = bytearray()
         bytes_table = [0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF]
-        bytes_required = bisect.bisect_left(bytes_table, offset, 0, 3) + 1
-        if bytes_required == 3:
-            bytes_required = 4
+        offset_width = bisect.bisect_left(bytes_table, offset, 0, 3) + 1
+        if offset_width == 3:
+            offset_width = 4
         for offset in offsets:
-            byte_offsets.extend(offset.to_bytes(bytes_required, "little"))
+            byte_offsets.extend(offset.to_bytes(offset_width, "little"))
 
-        print(f"// OFFSET_WIDTH = {bytes_required}")
-        if bytes_required == 1:
+        print(f"// OFFSET_WIDTH = {offset_width}")
+        if offset_width == 1:
             print("static unsigned char offsets[] = {")
             print(wrap_hex(byte_offsets))
-        if bytes_required == 2:
+        if offset_width == 2:
             print("static unsigned short offsets[] = {")
             byte_offsets16 = struct.unpack("<" + "H" * (len(byte_offsets) // 2), byte_offsets)
             print(wrap_short(byte_offsets16))
-        if bytes_required == 4:
+        if offset_width == 4:
             print("static unsigned int offsets[] = {")
             byte_offsets32 = struct.unpack("<" + "I" * (len(byte_offsets) // 4), byte_offsets)
             print(wrap_long(byte_offsets32))
         print("};\n")
 
         print("static unsigned char bits[] = {")
-        byte_values = [
-            int(bit_string[i : i + 8], 2) for i in range(0, len(bit_string), 8)
-        ]
+        if bpp == 1:
+            byte_values = [
+                int(bit_string[i : i + 8], 2) for i in range(0, len(bit_string), 8)
+            ]
+        else:
+            byte_values = [
+                int(bit_string[i : i + 2], 16) for i in range(0, len(bit_string), 2)
+            ]
         print(wrap_hex(byte_values))
         print("};\n")
 
@@ -513,14 +533,15 @@ class Font(object):
         print(f"    {height},")
         print(f"    {height-baseline},")
         print(f"    {ord(startchar)},     /* start char */")
-        print(f"    {numchars},     /* # chars */")
+        print(f"    {numchars},      /* # chars */")
         print( "    bits,")
         print( "    (unsigned char *)offsets,")
         print( "    widths,")
         print(f"    {ord(startchar)},     /* default char */")
-        print( "    0,")
-        print( "    1,      /* bits_width */")
-        print(f"    {bytes_required}       /* offset_width */")
+        print( "    0,      /* bits_size */")
+        print(f"    {bpp},      /* bpp */")
+        print(f"    1,      /* bits_width */")
+        print(f"    {offset_width}       /* offset_width */")
         print( "};")
 
 def main():
@@ -573,6 +594,8 @@ def main():
     width = args.font_height if args.font_width is None else args.font_width
     characters = get_chars(args.characters) if args.string is None else args.string
 
+    global bpp
+    bpp = 8
     fnt = Font(font_file, width, height)
     fnt.write_python(characters, font_file)
 

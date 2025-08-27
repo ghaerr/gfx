@@ -316,6 +316,31 @@ static int sdl_key(Uint8 state, SDL_Keysym sym)
     return kc;
 }
 
+void draw_hline(Drawable *dp, int x1, int x2, int y)
+{
+    if ((unsigned)y >= dp->height)
+        return;
+
+    pixel_t *pixel = (pixel_t *)(dp->pixels + y * dp->pitch + x1 * dp->bytespp);
+    do {
+        if ((unsigned)x1 >= dp->width)
+            return;
+        *pixel++ = dp->color;
+    } while (++x1 != x2);
+}
+
+void draw_filled_rect(Drawable *dp, int x1, int y1, int x2, int y2)
+{
+    /* normalize coordinates */
+    int xmin = (x1 <= x2) ? x1 : x2;
+    int xmax = (x1 > x2) ? x1 : x2;
+    int ymin = (y1 <= y2) ? y1 : y2;
+    int ymax = (y1 > y2) ? y1 : y2;
+
+    while (ymin <= ymax)
+        draw_hline(dp, xmin, xmax, ymin++);
+}
+
 /* default display attribute (for testing)*/
 //#define ATTR_DEFAULT 0x09   /* bright blue */
 //#define ATTR_DEFAULT 0x0F   /* bright white */
@@ -353,22 +378,21 @@ static void color_from_attr(Drawable *dp, unsigned int attr, pixel_t *pfg, pixel
 }
 
 /* draw a character bitmap */
-static void drawbitmap(Drawable *dp, struct console *con, int c, unsigned int attr,
+void draw_bitmap(Drawable *dp, Font *font, int c, unsigned int attr,
     int x, int y, int drawbg)
 {
     int minx, maxx;
-    int height = con->char_height;
-    Font *font = con->font;
+    int height = font->height;
     int bitcount = 0;
-    uint16_t word = 0;
-    uint16_t bitmask = (font->bits_width == 1)? 0x80: 0x8000;
+    uint32_t word = 0;
+    uint32_t bitmask = 1 << ((font->bits_width << 3) - 1);  /* MSB first */
     Varptr imagebits;
     pixel_t fgpixel, bgpixel;
 
     c -= font->firstchar;
     if (c < 0 || c > font->size)
         c = font->defaultchar - font->firstchar;
-    if (font->offset_width) {
+    if (font->offset.ptr8) {
         switch (font->offset_width) {
         case 1:
             imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr8[c];
@@ -391,12 +415,17 @@ static void drawbitmap(Drawable *dp, struct console *con, int c, unsigned int at
         uint32_t *pixel32;
         uint16_t *pixel16;
         if (bitcount <= 0) {
-            if (font->bits_width == 1) {
-                bitcount = 8;
+            bitcount = font->bits_width << 3;
+            switch (font->bits_width) {
+            case 1:
                 word = *imagebits.ptr8++;
-            } else {
-                bitcount = 16;
+                break;
+            case 2:
                 word = *imagebits.ptr16++;
+                break;
+            case 4:
+                word = *imagebits.ptr32++;
+                break;
             }
             pixel32 = (uint32_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
             pixel16 = (uint16_t *)pixel32;
@@ -425,6 +454,87 @@ static void drawbitmap(Drawable *dp, struct console *con, int c, unsigned int at
             bitcount = 0;
         }
     }
+}
+
+void blit_alphabytes(Drawable *td, const Rect *drect, alpha_t *src, pixel_t color)
+{
+    //unassert(srect->w == drect->w);   //FIXME check why src width can != dst width
+    /* src and dst height can differ, will use dst height for drawing */
+    pixel_t *dst = (pixel_t *)(td->pixels + drect->y * td->pitch + drect->x * td->bytespp);
+    //alpha_t *src = (alpha_t *)(ts->pixels + srect->y * ts->pitch + srect->x * ts->bytespp);
+
+    int dspan = td->pitch - (drect->w * td->bytespp);
+    int sspan = 0; //ts->pitch - drect->w;
+    int y = drect->h;
+    do {
+        int x = drect->w;
+        do {
+            alpha_t sa = *src++;
+            if (sa != 0) {
+                pixel_t srb = ((sa * (color & 0xff00ff)) >> 8) & 0xff00ff; //was ts
+                pixel_t sg =  ((sa * (color & 0x00ff00)) >> 8) & 0x00ff00; //was ts
+                if (sa != 0xff) {
+                    pixel_t da = 0xff - sa;
+                    pixel_t drb = *dst;
+                    pixel_t dg = drb & 0x00ff00;
+                           drb = drb & 0xff00ff;
+                    drb = ((drb * da >> 8) & 0xff00ff) + srb;
+                    dg =   ((dg * da >> 8) & 0x00ff00) + sg;
+                    *dst = drb + dg;
+                } else {
+                    *dst = srb + sg;
+                }
+            }
+            dst++;
+        } while (--x > 0);
+        dst = (pixel_t *)((uint8_t *)dst + dspan);
+        src = (alpha_t *)((uint8_t *)src + sspan);
+    } while (--y > 0);
+}
+
+/* draw a character glyph */
+void draw_glyph(Drawable *dp, Font *font, int c, unsigned int attr,
+    int x, int y, int drawbg)
+{
+    Varptr imagebits;
+    pixel_t fgpixel, bgpixel;
+
+    if (font->bpp == 1) {
+        draw_bitmap(dp, font, c, attr, x, y, drawbg);
+        return;
+    }
+    c -= font->firstchar;
+    if (c < 0 || c > font->size)
+        c = font->defaultchar - font->firstchar;
+    if (font->offset.ptr8) {
+        switch (font->offset_width) {
+        case 1:
+            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr8[c];
+            break;
+        case 2:
+            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr16[c];
+            break;
+        case 4:
+        default:
+            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr32[c];
+            break;
+        }
+    } else
+        imagebits.ptr8 = font->bits.ptr8 + c * font->bits_width * font->height;
+    color_from_attr(dp, attr, &fgpixel, &bgpixel);
+
+    Rect d;
+    d.x = x;
+    d.y = y;
+    d.w = font->width? font->width[c]: font->maxwidth;
+    d.h = font->height;
+    pixel_t save = dp->color;
+    if (drawbg) {
+        dp->color = bgpixel;
+        draw_filled_rect(dp, d.x, d.y, x + d.w + 1, y + d.h + 1);
+    }
+    blit_alphabytes(dp, &d, imagebits.ptr8, fgpixel);
+    dp->color = save;
 }
 
 /* update dirty rectangle in console coordinates */
@@ -530,7 +640,7 @@ static void draw_video_ram(Drawable *dp, struct console *con, int x1, int y1,
         int j = y * con->cols + sx;
         for (int x = sx; x < ex; x++) {
             uint16_t chattr = vidram[j];
-            drawbitmap(dp, con, chattr & 255, chattr >> 8,
+            draw_glyph(dp, con->font, chattr & 255, chattr >> 8,
                 x1 + x * con->char_width, y1 + y * con->char_height, 1);
             j++;
         }
@@ -545,7 +655,6 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
         /* FIXME kluge to clear background for proportional fonts from scrollup */
         if (con->update.x == 0 && con->update.y == 0 &&
             con->update.w == con->cols && con->update.h == con->lines) {
-            extern void draw_filled_rect(Drawable *dp, int x1, int y1, int x2, int y2);
             pixel_t color = dp->color;
             dp->color = 0;
             draw_filled_rect(dp,
@@ -562,7 +671,7 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
             con->update.x, con->update.y, con->update.w, con->update.h);
 
         /* draw cursor */
-        drawbitmap(dp, con, '_', ATTR_DEFAULT,
+        draw_glyph(dp, con->font, '_', ATTR_DEFAULT,
             x + con->curx * con->char_width, y + con->cury * con->char_height, 0);
 
         if (flush) {
@@ -627,6 +736,9 @@ Font *console_load_font(struct console *con, char *path)
     if (!font)
         //font = &font_rom8x16;       /* default font rom8x16 */
         font = &font_ttf;
+    if (font->bpp == 0)          font->bpp = 1;          /* mwin default 1 bpp */
+    if (font->bits_width == 0)   font->bits_width = 2;   /* mwin default 16 bits */
+    if (font->offset_width == 0) font->offset_width = 4; /* mwin default 32 bits */
     con->font = font;
     con->char_height = font->height;
     con->char_width = font->maxwidth;
@@ -720,19 +832,6 @@ pixel_t read_pixel(Drawable *dp, int x, int y)
     return 0;
 }
 
-void draw_hline(Drawable *dp, int x1, int x2, int y)
-{
-    if ((unsigned)y >= dp->height)
-        return;
-
-    pixel_t *pixel = (pixel_t *)(dp->pixels + y * dp->pitch + x1 * dp->bytespp);
-    do {
-        if ((unsigned)x1 >= dp->width)
-            return;
-        *pixel++ = dp->color;
-    } while (++x1 != x2);
-}
-
 void draw_vline(Drawable *dp, int x, int y1, int y2)
 {
     if ((unsigned)x >= dp->width)
@@ -762,18 +861,6 @@ void draw_rect(Drawable *dp, int x1, int y1, int x2, int y2)
     /* left and right vertical lines */
     draw_vline(dp, xmin, ymin, ymax);
     draw_vline(dp, xmax, ymin, ymax);
-}
-
-void draw_filled_rect(Drawable *dp, int x1, int y1, int x2, int y2)
-{
-    /* normalize coordinates */
-    int xmin = (x1 <= x2) ? x1 : x2;
-    int xmax = (x1 > x2) ? x1 : x2;
-    int ymin = (y1 <= y2) ? y1 : y2;
-    int ymax = (y1 > y2) ? y1 : y2;
-
-    while (ymin <= ymax)
-        draw_hline(dp, xmin, xmax, ymin++);
 }
 
 void draw_line(Drawable *dp, int x1, int y1, int x2, int y2)
@@ -1034,60 +1121,6 @@ static int sdl_nextevent(struct console *con)
     return 0;
 }
 
-unsigned char alphabits[8*10] = {
-  0,  17, 153, 231, 249, 220, 136,   0,
-  0, 182, 200,  33,  17, 136, 252,   0,
-  1, 252, 113,   0,   0,   5, 233,   0,
-  0, 216, 212,  27,   0,   0,   0,   0,
-  0,  49, 227, 245, 148,  28,   0,   0,
-  0,   0,  12, 121, 229, 244,  72,   0,
-  0,   0,   0,   0,   9, 176, 243,  12,
- 32, 205,   0,   0,   0,  79, 255,  36,
- 32, 255, 119,  17,  24, 174, 219,   3,
-  9, 126, 208, 246, 236, 175,  37,   0
-};
-
-unsigned char S[34*49] = {
-0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 67, 120, 173, 207, 222, 238, 252, 247, 237, 227, 206, 178, 149, 116, 71, 24, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 55, 156, 244, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 233, 174, 111, 47, 1, 0, 0, 0, 0, 0, 0, 0, 0, 27, 179, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 64, 0, 0, 0, 0, 0, 0, 0, 92, 241, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 64, 0, 0, 0, 0, 0, 0, 114, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 64, 0, 0, 0, 0, 0, 84, 254, 255, 255, 255, 255, 255, 255, 255, 232, 149, 94, 49, 24, 11, 4, 19, 35, 57, 102, 148, 197, 251, 255, 255, 255, 255, 255, 64, 0, 0, 0, 0, 23, 238, 255, 255, 255, 255, 255, 255, 223, 88, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15, 83, 156, 238, 255, 255, 64, 0, 0, 0, 0, 145, 255, 255, 255, 255, 255, 255, 186, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 87, 184, 61, 0, 0, 0, 10, 242, 255, 255, 255, 255, 255, 210, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 78, 255, 255, 255, 255, 255, 255, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 136, 255, 255, 255, 255, 255, 221, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 174, 255, 255, 255, 255, 255, 171, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 192, 255, 255, 255, 255, 255, 150, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 193, 255, 255, 255, 255, 255, 162, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 175, 255, 255, 255, 255, 255, 207, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 152, 255, 255, 255, 255, 255, 254, 42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 97, 255, 255, 255, 255, 255, 255, 193, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 28, 255, 255, 255, 255, 255, 255, 255, 192, 33, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 180, 255, 255, 255, 255, 255, 255, 255, 250, 165, 69, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 50, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255, 241, 179, 124, 70, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 121, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 219, 165, 109, 45, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 145, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 235, 169, 77, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 92, 244, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 230, 128, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 24, 146, 248, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 230, 94, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 23, 113, 204, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 155, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 31, 95, 157, 217, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 185, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15, 65, 116, 169, 233, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 140, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 45, 133, 226, 255, 255, 255, 255, 255, 255, 255, 255, 255, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 105, 235, 255, 255, 255, 255, 255, 255, 255, 190, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 29, 206, 255, 255, 255, 255, 255, 255, 255, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 24, 229, 255, 255, 255, 255, 255, 255, 121, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 98, 255, 255, 255, 255, 255, 255, 185, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 243, 255, 255, 255, 255, 255, 227, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 183, 255, 255, 255, 255, 255, 246, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 154, 255, 255, 255, 255, 255, 255, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 142, 255, 255, 255, 255, 255, 255, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 164, 255, 255, 255, 255, 255, 249, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200, 255, 255, 255, 255, 255, 218, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 25, 254, 255, 255, 255, 255, 255, 172, 0, 124, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 140, 255, 255, 255, 255, 255, 255, 108, 0, 152, 255, 188, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 59, 251, 255, 255, 255, 255, 255, 252, 24, 0, 152, 255, 255, 254, 175, 57, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 66, 243, 255, 255, 255, 255, 255, 255, 163, 0, 0, 152, 255, 255, 255, 255, 255, 204, 106, 22, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 29, 156, 254, 255, 255, 255, 255, 255, 255, 244, 33, 0, 0, 152, 255, 255, 255, 255, 255, 255, 255, 253, 200, 139, 86, 49, 20, 7, 4, 17, 32, 71, 119, 191, 254, 255, 255, 255, 255, 255, 255, 255, 255, 97, 0, 0, 0, 152, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 124, 0, 0, 0, 0, 152, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 245, 97, 0, 0, 0, 0, 0, 15, 93, 178, 248, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 175, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 14, 87, 152, 216, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 231, 149, 45, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 24, 78, 118, 158, 196, 219, 233, 247, 253, 248, 237, 217, 191, 153, 107, 49, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-};
-
-void blit_alphabytes(Drawable *td, const Rect *drect)
-{
-    //unassert(srect->w == drect->w);   //FIXME check why src width can != dst width
-    /* src and dst height can differ, will use dst height for drawing */
-    pixel_t *dst = (pixel_t *)(td->pixels + drect->y * td->pitch + drect->x * td->bytespp);
-    //alpha_t *src = (alpha_t *)(ts->pixels + srect->y * ts->pitch + srect->x * ts->bytespp);
-    alpha_t *src = S;
-
-    int dspan = td->pitch - (drect->w * td->bytespp);
-    int sspan = 0; //ts->pitch - drect->w;
-    int y = drect->h;
-    do {
-        int x = drect->w;
-        do {
-            alpha_t sa = *src++;
-            if (sa != 0) {
-                pixel_t srb = ((sa * (td->color & 0xff00ff)) >> 8) & 0xff00ff; //was ts
-                pixel_t sg =  ((sa * (td->color & 0x00ff00)) >> 8) & 0x00ff00; //was ts
-                if (sa != 0xff) {
-                    pixel_t da = 0xff - sa;
-                    pixel_t drb = *dst;
-                    pixel_t dg = drb & 0x00ff00;
-                           drb = drb & 0xff00ff;
-                    drb = ((drb * da >> 8) & 0xff00ff) + srb;
-                    dg =   ((dg * da >> 8) & 0x00ff00) + sg;
-                    *dst = drb + dg;
-                } else {
-                    *dst = srb + sg;
-                }
-            }
-            dst++;
-        } while (--x > 0);
-        dst = (pixel_t *)((uint8_t *)dst + dspan);
-        src = (alpha_t *)((uint8_t *)src + sspan);
-    } while (--y > 0);
-}
-
 int main(int ac, char **av)
 {
     Drawable *bb;
@@ -1100,22 +1133,10 @@ int main(int ac, char **av)
     if (!(con = create_console(20, 10))) exit(4);
 
     for (;;) {
-#if 0
-        Rect dr;
-        dr.x = 0;
-        dr.y = 0;
-        dr.w = 34;
-        dr.h = 49;
-        blit_alphabytes(bb, &dr);
-        if (sdl_nextevent(con))
-            break;
-        sdl_draw(bb, 0, 0, 0, 0);
-        continue;
-#endif
         Rect update = con->update;          /* save update rect for dup console */
         draw_console(con, bb, 5*8, 5*15, 1);
-        con->update = update;
-        draw_console(con, bb, 35*8, 5*15, 1);
+        //con->update = update;
+        //draw_console(con, bb, 35*8, 5*15, 1);
         if (sdl_nextevent(con))
             break;
         continue;
