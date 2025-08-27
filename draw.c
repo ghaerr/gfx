@@ -329,7 +329,7 @@ void draw_hline(Drawable *dp, int x1, int x2, int y)
     } while (++x1 != x2);
 }
 
-void draw_filled_rect(Drawable *dp, int x1, int y1, int x2, int y2)
+void draw_fill_rect(Drawable *dp, int x1, int y1, int x2, int y2)
 {
     /* normalize coordinates */
     int xmin = (x1 <= x2) ? x1 : x2;
@@ -411,6 +411,15 @@ void draw_bitmap(Drawable *dp, Font *font, int c, unsigned int attr,
 
     minx = x;
     maxx = font->width? (x + font->width[c] - 1): (x + font->maxwidth - 1);
+#if 0
+    if (drawbg && font->width) {
+        pixel_t save = dp->color;
+        dp->color = bgpixel;
+        draw_fill_rect(dp, x, y, maxx + 2, y + height);
+        dp->color = save;
+        drawbg = 0;
+    }
+#endif
     while (height > 0) {
         uint32_t *pixel32;
         uint16_t *pixel16;
@@ -434,15 +443,17 @@ void draw_bitmap(Drawable *dp, Font *font, int c, unsigned int attr,
         case MWPF_TRUECOLORARGB:    /* byte order B G R A */
         case MWPF_TRUECOLORABGR:    /* byte order R G B A */
             if (word & bitmask)
-                *pixel32++ = fgpixel;
+                *pixel32 = fgpixel;
             else if (drawbg)
-                *pixel32++ = bgpixel;
+                *pixel32 = bgpixel;
+            pixel32++;
             break;
         case MWPF_TRUECOLOR565:
             if (word & bitmask)
-                *pixel16++ = fgpixel;
+                *pixel16 = fgpixel;
             else if (drawbg)
-                *pixel16++ = bgpixel;
+                *pixel16 = bgpixel;
+            pixel16++;
             break;
         }
         word <<= 1;
@@ -531,7 +542,7 @@ void draw_glyph(Drawable *dp, Font *font, int c, unsigned int attr,
     pixel_t save = dp->color;
     if (drawbg) {
         dp->color = bgpixel;
-        draw_filled_rect(dp, d.x, d.y, x + d.w + 1, y + d.h + 1);
+        draw_fill_rect(dp, d.x, d.y, x + d.w + 1, y + d.h + 1);
     }
     blit_alphabytes(dp, &d, imagebits.ptr8, fgpixel);
     dp->color = save;
@@ -657,7 +668,7 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
             con->update.w == con->cols && con->update.h == con->lines) {
             pixel_t color = dp->color;
             dp->color = 0;
-            draw_filled_rect(dp,
+            draw_fill_rect(dp,
                 x + con->update.x * con->char_width,
                 y + con->update.y * con->char_height,
                 x + con->update.w * con->char_width,
@@ -921,7 +932,7 @@ void draw_circle(Drawable *dp, int x0, int y0, int r)
 }
 
 /* Based on algorithm http://members.chello.at/easyfilter/bresenham.html */
-void draw_filled_circle(Drawable *dp, int x0, int y0, int r)
+void draw_fill_circle(Drawable *dp, int x0, int y0, int r)
 {
     if (r <= 1) {
         draw_point(dp, x0, y0);
@@ -955,7 +966,7 @@ void draw_thick_line(Drawable *dp, int x1, int y1, int x2, int y2, int r)
     int err = dx - dy;
 
     while (x1 != x2 || y1 != y2) {
-        draw_filled_circle(dp, x1, y1, r);
+        draw_fill_circle(dp, x1, y1, r);
 
         int e2 = err << 1;
         if (e2 > -dy) {
@@ -967,7 +978,7 @@ void draw_thick_line(Drawable *dp, int x1, int y1, int x2, int y2, int r)
             y1 += sy;
         }
     }
-    draw_filled_circle(dp, x2, y2, r);
+    draw_fill_circle(dp, x2, y2, r);
 }
 
 /* Flood fill code originally from https://github.com/silvematt/TomentPainter.git
@@ -1150,7 +1161,7 @@ int main(int ac, char **av)
         //draw_circle(bb, x1, y1, r);
         //draw_flood_fill(bb, x1, y1);
         //draw_rect(bb, x1, y1, x2, y2);
-        //draw_filled_rect(bb, x1, y1, x2, y2);
+        //draw_fill_rect(bb, x1, y1, x2, y2);
         sdl_draw(bb, 0, 0, 0, 0);
     }
 

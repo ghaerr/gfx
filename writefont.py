@@ -561,6 +561,15 @@ def main():
         "font_height", type=int, default=8, help="size of font to create bitmaps from."
     )
 
+    global bpp
+    parser.add_argument(
+        "-bpp",
+        "--bpp",
+        type=int,
+        default=None,
+        help="bitmap or alpha blended font.",
+    )
+
     parser.add_argument(
         "-width",
         "--font_width",
@@ -592,10 +601,9 @@ def main():
     font_file = args.font_file
     height = args.font_height
     width = args.font_height if args.font_width is None else args.font_width
+    bpp = 8 if args.bpp is None else args.bpp
     characters = get_chars(args.characters) if args.string is None else args.string
 
-    global bpp
-    bpp = 8
     fnt = Font(font_file, width, height)
     fnt.write_python(characters, font_file)
 
