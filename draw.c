@@ -316,21 +316,27 @@ static int sdl_key(Uint8 state, SDL_Keysym sym)
     return kc;
 }
 
+/* draw horizontal line inclusive of (x1, x2) w/clipping */
 void draw_hline(Drawable *dp, int x1, int x2, int y)
 {
     if ((unsigned)y >= dp->height)
         return;
 
     pixel_t *pixel = (pixel_t *)(dp->pixels + y * dp->pitch + x1 * dp->bytespp);
-    do {
+    while (x1++ <= x2) {
         if ((unsigned)x1 >= dp->width)
             return;
         *pixel++ = dp->color;
-    } while (++x1 != x2);
+    }
 }
 
+/* draw filled rectangle inclusive of (x1,y1; x2,y2) w/clipping */
 void draw_fill_rect(Drawable *dp, int x1, int y1, int x2, int y2)
 {
+#if 1
+    while (y1 <= y2)
+        draw_hline(dp, x1, x2, y1++);
+#else
     /* normalize coordinates */
     int xmin = (x1 <= x2) ? x1 : x2;
     int xmax = (x1 > x2) ? x1 : x2;
@@ -339,6 +345,7 @@ void draw_fill_rect(Drawable *dp, int x1, int y1, int x2, int y2)
 
     while (ymin <= ymax)
         draw_hline(dp, xmin, xmax, ymin++);
+#endif
 }
 
 /* default display attribute (for testing)*/
@@ -381,7 +388,7 @@ static void color_from_attr(Drawable *dp, unsigned int attr, pixel_t *pfg, pixel
 void draw_bitmap(Drawable *dp, Font *font, int c, unsigned int attr,
     int x, int y, int drawbg)
 {
-    int minx, maxx;
+    int minx, maxx, w;
     int height = font->height;
     int bitcount = 0;
     uint32_t word = 0;
@@ -409,17 +416,19 @@ void draw_bitmap(Drawable *dp, Font *font, int c, unsigned int attr,
         imagebits.ptr8 = font->bits.ptr8 + c * font->bits_width * font->height;
     color_from_attr(dp, attr, &fgpixel, &bgpixel);
 
-    minx = x;
-    maxx = font->width? (x + font->width[c] - 1): (x + font->maxwidth - 1);
-#if 0
-    if (drawbg && font->width) {
+    minx = maxx = x;
+    w = font->width? font->width[c]: font->maxwidth;
+    maxx += w;
+
+    /* fill remainder to max width if proportional glyph and console */
+    if (drawbg == 2 && w != font->maxwidth) {
         pixel_t save = dp->color;
         dp->color = bgpixel;
-        draw_fill_rect(dp, x, y, maxx + 2, y + height);
+        w = font->maxwidth - w;
+        draw_fill_rect(dp, maxx, y, maxx + w, y + height);
         dp->color = save;
-        drawbg = 0;
     }
-#endif
+
     while (height > 0) {
         uint32_t *pixel32;
         uint16_t *pixel16;
@@ -457,8 +466,8 @@ void draw_bitmap(Drawable *dp, Font *font, int c, unsigned int attr,
             break;
         }
         word <<= 1;
-        bitcount--;
-        if (x++ == maxx) {
+        --bitcount;
+        if (++x == maxx) {
             x = minx;
             ++y;
             --height;
@@ -467,6 +476,7 @@ void draw_bitmap(Drawable *dp, Font *font, int c, unsigned int attr,
     }
 }
 
+/* alpha blend glyph's 8-bit alpha channel onto drawable */
 void blit_alphabytes(Drawable *td, const Rect *drect, alpha_t *src, pixel_t color)
 {
     //unassert(srect->w == drect->w);   //FIXME check why src width can != dst width
@@ -482,8 +492,8 @@ void blit_alphabytes(Drawable *td, const Rect *drect, alpha_t *src, pixel_t colo
         do {
             alpha_t sa = *src++;
             if (sa != 0) {
-                pixel_t srb = ((sa * (color & 0xff00ff)) >> 8) & 0xff00ff; //was ts
-                pixel_t sg =  ((sa * (color & 0x00ff00)) >> 8) & 0x00ff00; //was ts
+                pixel_t srb = ((sa * (color & 0xff00ff)) >> 8) & 0xff00ff;
+                pixel_t sg =  ((sa * (color & 0x00ff00)) >> 8) & 0x00ff00;
                 if (sa != 0xff) {
                     pixel_t da = 0xff - sa;
                     pixel_t drb = *dst;
@@ -537,15 +547,21 @@ void draw_glyph(Drawable *dp, Font *font, int c, unsigned int attr,
     Rect d;
     d.x = x;
     d.y = y;
-    d.w = font->width? font->width[c]: font->maxwidth;
+    int w = font->width? font->width[c]: font->maxwidth;
+    d.w = w;
     d.h = font->height;
-    pixel_t save = dp->color;
+
+    /* must clear background as alpha blit won't do it */
     if (drawbg) {
+        pixel_t save = dp->color;
         dp->color = bgpixel;
-        draw_fill_rect(dp, d.x, d.y, x + d.w + 1, y + d.h + 1);
+        /* fill to max width if proportional glyph and console */
+        if (drawbg == 2)
+            w += font->maxwidth - w;
+        draw_fill_rect(dp, x, y, x + w - 1, y + d.h - 1);
+        dp->color = save;
     }
     blit_alphabytes(dp, &d, imagebits.ptr8, fgpixel);
-    dp->color = save;
 }
 
 /* update dirty rectangle in console coordinates */
@@ -652,7 +668,7 @@ static void draw_video_ram(Drawable *dp, struct console *con, int x1, int y1,
         for (int x = sx; x < ex; x++) {
             uint16_t chattr = vidram[j];
             draw_glyph(dp, con->font, chattr & 255, chattr >> 8,
-                x1 + x * con->char_width, y1 + y * con->char_height, 1);
+                x1 + x * con->char_width, y1 + y * con->char_height, 2);
             j++;
         }
     }
@@ -740,13 +756,16 @@ Font *console_load_font(struct console *con, char *path)
 {
     Font *font = NULL;
     extern Font font_rom8x16;
-    extern Font font_ttf;           /* FIXME for testing writeconv.py */
+    extern Font font_cour_32;
+    extern Font font_cambria_32;
+    extern Font font_vera_16;
 
     if (path)
         font = font_create(path);
     if (!font)
         //font = &font_rom8x16;       /* default font rom8x16 */
-        font = &font_ttf;
+        //font = &font_cour_32;
+        font = &font_cambria_32;
     if (font->bpp == 0)          font->bpp = 1;          /* mwin default 1 bpp */
     if (font->bits_width == 0)   font->bits_width = 2;   /* mwin default 16 bits */
     if (font->offset_width == 0) font->offset_width = 4; /* mwin default 32 bits */
@@ -843,35 +862,46 @@ pixel_t read_pixel(Drawable *dp, int x, int y)
     return 0;
 }
 
+/* draw vertical line inclusive of (y1, y2) w/clipping */
 void draw_vline(Drawable *dp, int x, int y1, int y2)
 {
     if ((unsigned)x >= dp->width)
         return;
 
     pixel_t *pixel = (pixel_t *)(dp->pixels + y1 * dp->pitch + x * dp->bytespp);
-    do {
+    while (y1++ <= y2) {
         if ((unsigned)y1 >= dp->height)
             return;
         *pixel = dp->color;
 		pixel += dp->pitch >> 2;    /* pixels not bytes */
-    } while (++y1 != y2);
+    }
 }
 
+/* draw rectangle inclusive of (x1,y1; x2,y2) w/clipping */
 void draw_rect(Drawable *dp, int x1, int y1, int x2, int y2)
 {
+#if 1
+    /* top and bottom horizontal lines */
+    draw_hline(dp, x1, x2, y1);
+    draw_hline(dp, x1, x2, y2);
+
+    /* left and right vertical lines */
+    //FIXME don't draw corners twice
+    draw_vline(dp, x1, y1, y2);
+    draw_vline(dp, x2, y1, y2);
+#else
     /* normalize coordinates */
     int xmin = (x1 <= x2) ? x1 : x2;
     int xmax = (x1 > x2) ? x1 : x2;
     int ymin = (y1 <= y2) ? y1 : y2;
     int ymax = (y1 > y2) ? y1 : y2;
 
-    /* top and bottom horizontal lines */
     draw_hline(dp, xmin, xmax, ymin);
     draw_hline(dp, xmin, xmax, ymax);
 
-    /* left and right vertical lines */
     draw_vline(dp, xmin, ymin, ymax);
     draw_vline(dp, xmax, ymin, ymax);
+#endif
 }
 
 void draw_line(Drawable *dp, int x1, int y1, int x2, int y2)

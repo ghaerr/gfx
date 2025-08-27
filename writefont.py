@@ -100,6 +100,7 @@ import bisect
 import itertools
 import freetype
 import struct
+import os
 
 
 def to_int(string):
@@ -434,6 +435,14 @@ class Font(object):
         startchar = text[0]
         numchars = len(text)
 
+        # write out C source
+        cmd_line = " ".join(map(shlex.quote, sys.argv))
+        print( "/*")
+        print(f" * Converted using: {cmd_line}")
+        print( " */")
+        print('#include "font.h"')
+        print()
+
         for char in text:
             glyph = self.glyph_for_character(char)
 
@@ -477,18 +486,8 @@ class Font(object):
         # escape '\' and '"' characters for char_map
         char_map = text.replace("\\", "\\\\").replace('"', '\\"')
 
-        cmd_line = " ".join(map(shlex.quote, sys.argv))
         max_width = max(widths)
 
-        # write python module source
-        print("/*")
-        print(f" * Converted from {font_file} using:")
-        print(f" *   {cmd_line}")
-        print(" */")
-        print('#include "font.h"')
-        print()
-        print(f"// BPP = {bpp}")
-        print(f'// MAP = "{char_map}"')
         print("static unsigned char widths[] = {")
         print(wrap_hex(widths))
         print("};\n")
@@ -527,17 +526,27 @@ class Font(object):
         print(wrap_hex(byte_values))
         print("};\n")
 
-        print( "struct font font_ttf = {")
-        print( "    0,")
-        print(f"    {max_width},")
-        print(f"    {height},")
-        print(f"    {height-baseline},")
-        print(f"    {ord(startchar)},     /* start char */")
-        print(f"    {numchars},      /* # chars */")
+        fontname,_ = os.path.splitext(os.path.basename(font_file))
+        fontname += "_" + str(args_height)
+        print(f"// NAME = {fontname}")
+        print(f"// HEIGHT = {args_height}")
+        print(f"// MAX_HEIGHT = {height}")
+        print(f"// MAX_WIDTH = {max_width}")
+        print(f"// BPP = {bpp}")
+        print(f'// MAP = "{char_map}"')
+        print()
+
+        print(f"struct font font_{fontname} =", "{")
+        print(f'    "{fontname}",')
+        print(f"    {max_width},     /* maxwidth */")
+        print(f"    {height},     /* height */")
+        print(f"    {height-baseline},     /* ascent */")
+        print(f"    {ord(startchar)},     /* firstchar */")
+        print(f"    {numchars},     /* size */")
         print( "    bits,")
         print( "    (unsigned char *)offsets,")
         print( "    widths,")
-        print(f"    {ord(startchar)},     /* default char */")
+        print(f"    {ord(startchar)},     /* defaultchar */")
         print( "    0,      /* bits_size */")
         print(f"    {bpp},      /* bpp */")
         print(f"    1,      /* bits_width */")
@@ -599,7 +608,8 @@ def main():
 
     args = parser.parse_args()
     font_file = args.font_file
-    height = args.font_height
+    global args_height
+    args_height = height = args.font_height
     width = args.font_height if args.font_width is None else args.font_width
     bpp = 8 if args.bpp is None else args.bpp
     characters = get_chars(args.characters) if args.string is None else args.string
