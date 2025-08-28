@@ -331,21 +331,10 @@ void draw_hline(Drawable *dp, int x1, int x2, int y)
 }
 
 /* draw filled rectangle inclusive of (x1,y1; x2,y2) w/clipping */
-void draw_fill_rect(Drawable *dp, int x1, int y1, int x2, int y2)
+void draw_fill_rect_fast(Drawable *dp, int x1, int y1, int x2, int y2)
 {
-#if 1
     while (y1 <= y2)
         draw_hline(dp, x1, x2, y1++);
-#else
-    /* normalize coordinates */
-    int xmin = (x1 <= x2) ? x1 : x2;
-    int xmax = (x1 > x2) ? x1 : x2;
-    int ymin = (y1 <= y2) ? y1 : y2;
-    int ymax = (y1 > y2) ? y1 : y2;
-
-    while (ymin <= ymax)
-        draw_hline(dp, xmin, xmax, ymin++);
-#endif
 }
 
 /* default display attribute (for testing)*/
@@ -392,7 +381,7 @@ void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
         pixel_t save = dp->color;
         dp->color = bgpixel;
         w = font->maxwidth - w;
-        draw_fill_rect(dp, maxx, y, maxx + w, y + height);
+        draw_fill_rect_fast(dp, maxx, y, maxx + w, y + height);
         dp->color = save;
     }
 
@@ -519,7 +508,7 @@ void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
         /* fill to max width if proportional glyph and console */
         if (drawbg == 2)
             w += font->maxwidth - w;
-        draw_fill_rect(dp, x, y, x + w - 1, y + d.h - 1);
+        draw_fill_rect_fast(dp, x, y, x + w - 1, y + d.h - 1);
         dp->color = save;
     }
     blit_alphabytes(dp, &d, imagebits.ptr8, fgpixel);
@@ -582,7 +571,7 @@ static void scrolldn(struct console *con, int y1, int y2, unsigned char attr)
     update_dirty_region(con, 0, 0, con->cols, y2-y1+1);
 }
 
-void con_movecursor(struct console *con, int x, int y)
+void console_movecursor(struct console *con, int x, int y)
 {
     update_dirty_region(con, con->lastx, con->lasty, 1, 1);
     con->curx = con->lastx = x;
@@ -591,7 +580,7 @@ void con_movecursor(struct console *con, int x, int y)
 }
 
 /* output character at cursor location*/
-void con_textout(struct console *con, int c, int attr)
+void console_textout(struct console *con, int c, int attr)
 {
     switch (c) {
     case '\0':  return;
@@ -615,7 +604,7 @@ scroll:
     }
 
 update:
-    con_movecursor(con, con->curx, con->cury);
+    console_movecursor(con, con->curx, con->cury);
 }
 
 /* convert EGA attribute to pixel value */
@@ -837,7 +826,7 @@ struct console *create_console(int width, int height)
     /* init text ram and update rect */
     for (i = 0; i < height; i++)
         clear_line(con, 0, con->cols - 1, i, ATTR_DEFAULT);
-    con_movecursor(con, 0, con->lines-1);
+    console_movecursor(con, 0, con->lines-1);
 
     return con;
 }
@@ -881,6 +870,7 @@ Drawable *create_pixmap(int pixtype, int width, int height)
     return dp;
 }
 
+/* draw pixel w/clipping */
 void draw_point(Drawable *dp, int x, int y)
 {
     pixel_t *pixel;
@@ -920,16 +910,6 @@ void draw_vline(Drawable *dp, int x, int y1, int y2)
 /* draw rectangle inclusive of (x1,y1; x2,y2) w/clipping */
 void draw_rect(Drawable *dp, int x1, int y1, int x2, int y2)
 {
-#if 1
-    /* top and bottom horizontal lines */
-    draw_hline(dp, x1, x2, y1);
-    draw_hline(dp, x1, x2, y2);
-
-    /* left and right vertical lines */
-    //FIXME don't draw corners twice
-    draw_vline(dp, x1, y1, y2);
-    draw_vline(dp, x2, y1, y2);
-#else
     /* normalize coordinates */
     int xmin = (x1 <= x2) ? x1 : x2;
     int xmax = (x1 > x2) ? x1 : x2;
@@ -939,9 +919,21 @@ void draw_rect(Drawable *dp, int x1, int y1, int x2, int y2)
     draw_hline(dp, xmin, xmax, ymin);
     draw_hline(dp, xmin, xmax, ymax);
 
-    draw_vline(dp, xmin, ymin, ymax);
-    draw_vline(dp, xmax, ymin, ymax);
-#endif
+    draw_vline(dp, xmin, ymin+1, ymax-1);
+    draw_vline(dp, xmax, ymin+1, ymax-1);
+}
+
+/* draw filled rectangle inclusive of (x1,y1; x2,y2) w/clipping */
+void draw_fill_rect(Drawable *dp, int x1, int y1, int x2, int y2)
+{
+    /* normalize coordinates */
+    int xmin = (x1 <= x2) ? x1 : x2;
+    int xmax = (x1 > x2) ? x1 : x2;
+    int ymin = (y1 <= y2) ? y1 : y2;
+    int ymax = (y1 > y2) ? y1 : y2;
+
+    while (ymin <= ymax)
+        draw_hline(dp, xmin, xmax, ymin++);
 }
 
 void draw_line(Drawable *dp, int x1, int y1, int x2, int y2)
@@ -1191,12 +1183,12 @@ static int sdl_nextevent(struct console *con, struct console *con2)
                 c = sdl_key(event.key.state, event.key.keysym);
                 if (c == 'q') return 1;     //FIXME
                 if (c == '\r') {
-                    con_textout(con, c, ATTR_DEFAULT);
-                    con_textout(con2, c, ATTR_DEFAULT);
+                    console_textout(con, c, ATTR_DEFAULT);
+                    console_textout(con2, c, ATTR_DEFAULT);
                     c = '\n';
                 }
-                con_textout(con, c, ATTR_DEFAULT);
-                con_textout(con2, c, ATTR_DEFAULT);
+                console_textout(con, c, ATTR_DEFAULT);
+                console_textout(con2, c, ATTR_DEFAULT);
                 break;
         }
     }
@@ -1215,9 +1207,9 @@ int main(int ac, char **av)
     if (!(bb = create_pixmap(MWPF_DEFAULT, 800, 400))) exit(2);
     if (!(sdl = sdl_create_window(bb))) exit(3);
     if (!(con = create_console(14, 8))) exit(4);
-    console_load_font(con, "lucida_32_tt");
+    console_load_font(con, "cour_32_tt");
     if (!(con2 = create_console(14, 8))) exit(4);
-    console_load_font(con2, "cour_32_tt");
+    console_load_font(con2, "cour_32");
 
     for (;;) {
         //Rect update = con->update;          /* save update rect for dup console */
@@ -1226,7 +1218,7 @@ int main(int ac, char **av)
         draw_console(con2, bb, 50*8, 5*15, 1);
         if (sdl_nextevent(con, con2))
             break;
-        continue;
+        //continue;
         int x1 = random() % 640;
         int x2 = random() % 640;
         int y1 = random() % 400;
@@ -1236,7 +1228,7 @@ int main(int ac, char **av)
         //draw_thick_line(bb, x1, y1, x2, y2, 6);
         //draw_circle(bb, x1, y1, r);
         //draw_flood_fill(bb, x1, y1);
-        //draw_rect(bb, x1, y1, x2, y2);
+        draw_rect(bb, x1, y1, x2, y2);
         //draw_fill_rect(bb, x1, y1, x2, y2);
         sdl_draw(bb, 0, 0, 0, 0);
     }
