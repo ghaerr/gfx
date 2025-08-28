@@ -721,14 +721,20 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 
 extern Font font_rom8x16;
 extern Font font_cour_32;
-extern Font font_cambria_32;
-extern Font font_Vera_32;
+extern Font font_cour_32_tt;
+extern Font font_times_32;
+extern Font font_times_32_tt;
+extern Font font_lucida_32;
+extern Font font_lucida_32_tt;
 
 static Font *fonts[] = {
-    &font_rom8x16,              /* default font */
+    &font_rom8x16,              /* first font is default font */
     &font_cour_32,
-    &font_cambria_32,
-    &font_Vera_32,
+    &font_cour_32_tt,
+    &font_times_32,
+    &font_times_32_tt,
+    &font_lucida_32,
+    &font_lucida_32_tt,
 };
 
 Font *font_load_internal_font(char *name)
@@ -786,13 +792,12 @@ Font *console_load_font(struct console *con, char *path)
 {
     Font *font = NULL;
 
-    if (path)
-        font = font_load_internal_font(path);
-    if (font) printf("found %s\n", font->name);
+    if (path) font = font_load_internal_font(path);
     if (!font) {
-        font = font_load_disk_font(path);
+        if (path) font = font_load_disk_font(path);
         if (!font) {
-            printf("Can't find font '%s', using default %s\n", path, fonts[0]->name);
+            if (path)
+                printf("Can't find font '%s', using default %s\n", path, fonts[0]->name);
             font = fonts[0];
         }
     }
@@ -820,10 +825,9 @@ struct console *create_console(int width, int height)
     memset(con, 0, sizeof(struct console));
     con->cols = width;
     con->lines = height;
-    //console_load_font(con, NULL);       /* loads rom8x16 */
+    console_load_font(con, NULL);       /* loads default font */
     //console_load_font(con, "cour_32");
-    //console_load_font(con, "cambria_32");
-    console_load_font(con, "Vera_32");
+    //console_load_font(con, "cour_32_tt");
     //console_load_font(con, "VGA-ROM.F16");
     //console_load_font(con, "COMPAQP3.F16");
     //console_load_font(con, "DOSV-437.F16");
@@ -1173,7 +1177,7 @@ void draw_flood_fill(Drawable *dp, int x, int y)
 }
 /* end flood fill code */
 
-static int sdl_nextevent(struct console *con)
+static int sdl_nextevent(struct console *con, struct console *con2)
 {
     int c;
     SDL_Event event;
@@ -1188,9 +1192,11 @@ static int sdl_nextevent(struct console *con)
                 if (c == 'q') return 1;     //FIXME
                 if (c == '\r') {
                     con_textout(con, c, ATTR_DEFAULT);
+                    con_textout(con2, c, ATTR_DEFAULT);
                     c = '\n';
                 }
                 con_textout(con, c, ATTR_DEFAULT);
+                con_textout(con2, c, ATTR_DEFAULT);
                 break;
         }
     }
@@ -1203,18 +1209,22 @@ int main(int ac, char **av)
     Drawable *bb;
     struct sdl_window *sdl;
     struct console *con;
+    struct console *con2;
 
     if (!sdl_init()) exit(1);
-    if (!(bb = create_pixmap(MWPF_DEFAULT, 640, 400))) exit(2);
+    if (!(bb = create_pixmap(MWPF_DEFAULT, 800, 400))) exit(2);
     if (!(sdl = sdl_create_window(bb))) exit(3);
-    if (!(con = create_console(18, 8))) exit(4);
+    if (!(con = create_console(14, 8))) exit(4);
+    console_load_font(con, "lucida_32_tt");
+    if (!(con2 = create_console(14, 8))) exit(4);
+    console_load_font(con2, "cour_32_tt");
 
     for (;;) {
         //Rect update = con->update;          /* save update rect for dup console */
         draw_console(con, bb, 5*8, 5*15, 1);
         //con->update = update;
-        //draw_console(con, bb, 35*8, 5*15, 1);
-        if (sdl_nextevent(con))
+        draw_console(con2, bb, 50*8, 5*15, 1);
+        if (sdl_nextevent(con, con2))
             break;
         continue;
         int x1 = random() % 640;
