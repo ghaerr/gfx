@@ -353,40 +353,9 @@ void draw_fill_rect(Drawable *dp, int x1, int y1, int x2, int y2)
 //#define ATTR_DEFAULT 0x0F   /* bright white */
 #define ATTR_DEFAULT 0xF0   /* reverse ltgray */
 
-/* convert EGA attribute to pixel value */
-static void color_from_attr(Drawable *dp, unsigned int attr, pixel_t *pfg, pixel_t *pbg)
-{
-    int fg = attr & 0x0F;
-    int bg = (attr & 0x70) >> 4;
-    unsigned char fg_red = ega_colormap[fg].r;
-    unsigned char fg_green = ega_colormap[fg].g;
-    unsigned char fg_blue = ega_colormap[fg].b;
-    unsigned char bg_red = ega_colormap[bg].r;
-    unsigned char bg_green = ega_colormap[bg].g;
-    unsigned char bg_blue = ega_colormap[bg].b;
-    pixel_t fgpixel, bgpixel;
-
-    switch (dp->pixtype) {
-    case MWPF_TRUECOLORARGB:    /* byte order B G R A */
-        fgpixel = RGB2PIXELARGB(fg_red, fg_green, fg_blue);
-        bgpixel = RGB2PIXELARGB(bg_red, bg_green, bg_blue);
-        break;
-    case MWPF_TRUECOLORABGR:    /* byte order R G B A */
-        fgpixel = RGB2PIXELABGR(fg_red, fg_green, fg_blue);
-        bgpixel = RGB2PIXELABGR(bg_red, bg_green, bg_blue);
-        break;
-    case MWPF_TRUECOLOR565:
-        fgpixel = RGB2PIXEL565(fg_red, fg_green, fg_blue);
-        bgpixel = RGB2PIXEL565(bg_red, bg_green, bg_blue);
-        break;
-    }
-    *pfg = fgpixel;
-    *pbg = bgpixel;
-}
-
 /* draw a character bitmap */
-void draw_bitmap(Drawable *dp, Font *font, int c, unsigned int attr,
-    int x, int y, int drawbg)
+void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
+    pixel_t fgpixel, pixel_t bgpixel, int drawbg)
 {
     int minx, maxx, w;
     int height = font->height;
@@ -394,7 +363,6 @@ void draw_bitmap(Drawable *dp, Font *font, int c, unsigned int attr,
     uint32_t word = 0;
     uint32_t bitmask = 1 << ((font->bits_width << 3) - 1);  /* MSB first */
     Varptr imagebits;
-    pixel_t fgpixel, bgpixel;
 
     c -= font->firstchar;
     if (c < 0 || c > font->size)
@@ -414,7 +382,6 @@ void draw_bitmap(Drawable *dp, Font *font, int c, unsigned int attr,
         }
     } else
         imagebits.ptr8 = font->bits.ptr8 + c * font->bits_width * font->height;
-    color_from_attr(dp, attr, &fgpixel, &bgpixel);
 
     minx = maxx = x;
     w = font->width? font->width[c]: font->maxwidth;
@@ -514,16 +481,11 @@ void blit_alphabytes(Drawable *td, const Rect *drect, alpha_t *src, pixel_t colo
 }
 
 /* draw a character glyph */
-void draw_glyph(Drawable *dp, Font *font, int c, unsigned int attr,
-    int x, int y, int drawbg)
+void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
+    pixel_t fgpixel, pixel_t bgpixel, int drawbg)
 {
     Varptr imagebits;
-    pixel_t fgpixel, bgpixel;
 
-    if (font->bpp == 1) {
-        draw_bitmap(dp, font, c, attr, x, y, drawbg);
-        return;
-    }
     c -= font->firstchar;
     if (c < 0 || c > font->size)
         c = font->defaultchar - font->firstchar;
@@ -542,7 +504,6 @@ void draw_glyph(Drawable *dp, Font *font, int c, unsigned int attr,
         }
     } else
         imagebits.ptr8 = font->bits.ptr8 + c * font->bits_width * font->height;
-    color_from_attr(dp, attr, &fgpixel, &bgpixel);
 
     Rect d;
     d.x = x;
@@ -657,18 +618,59 @@ update:
     con_movecursor(con, con->curx, con->cury);
 }
 
+/* convert EGA attribute to pixel value */
+static void color_from_attr(Drawable *dp, unsigned int attr, pixel_t *pfg, pixel_t *pbg)
+{
+    int fg = attr & 0x0F;
+    int bg = (attr & 0x70) >> 4;
+    unsigned char fg_red = ega_colormap[fg].r;
+    unsigned char fg_green = ega_colormap[fg].g;
+    unsigned char fg_blue = ega_colormap[fg].b;
+    unsigned char bg_red = ega_colormap[bg].r;
+    unsigned char bg_green = ega_colormap[bg].g;
+    unsigned char bg_blue = ega_colormap[bg].b;
+    pixel_t fgpixel, bgpixel;
+
+    switch (dp->pixtype) {
+    case MWPF_TRUECOLORARGB:    /* byte order B G R A */
+        fgpixel = RGB2PIXELARGB(fg_red, fg_green, fg_blue);
+        bgpixel = RGB2PIXELARGB(bg_red, bg_green, bg_blue);
+        break;
+    case MWPF_TRUECOLORABGR:    /* byte order R G B A */
+        fgpixel = RGB2PIXELABGR(fg_red, fg_green, fg_blue);
+        bgpixel = RGB2PIXELABGR(bg_red, bg_green, bg_blue);
+        break;
+    case MWPF_TRUECOLOR565:
+        fgpixel = RGB2PIXEL565(fg_red, fg_green, fg_blue);
+        bgpixel = RGB2PIXEL565(bg_red, bg_green, bg_blue);
+        break;
+    }
+    *pfg = fgpixel;
+    *pbg = bgpixel;
+}
+
+static void draw_console_char(Drawable *dp, Font *font, int c, int x, int y,
+    pixel_t fg, pixel_t bg, int drawbg)
+{
+    if (font->bpp == 8)
+        draw_glyph(dp, font, c, x, y, fg, bg, drawbg);
+    else draw_bitmap(dp, font, c, x, y, fg, bg, drawbg);
+}
+
 /* draw characters from console text RAM */
 static void draw_video_ram(Drawable *dp, struct console *con, int x1, int y1,
     int sx, int sy, int ex, int ey)
 {
     uint16_t *vidram = con->text_ram;
+    pixel_t fg, bg;
 
     for (int y = sy; y < ey; y++) {
         int j = y * con->cols + sx;
         for (int x = sx; x < ex; x++) {
             uint16_t chattr = vidram[j];
-            draw_glyph(dp, con->font, chattr & 255, chattr >> 8,
-                x1 + x * con->char_width, y1 + y * con->char_height, 2);
+            color_from_attr(dp, chattr >> 8, &fg, &bg);
+            draw_console_char(dp, con->font, chattr & 255,
+                x1 + x * con->char_width, y1 + y * con->char_height, fg, bg, 2);
             j++;
         }
     }
@@ -677,6 +679,8 @@ static void draw_video_ram(Drawable *dp, struct console *con, int x1, int y1,
 /* Called periodically from the main loop */
 void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 {
+    pixel_t fg, bg;
+
     if (con->update.w >= 0 || con->update.h >= 0) {
 #if PROPORTIONAL_CONSOLE
         /* FIXME kluge to clear background for proportional fonts from scrollup */
@@ -698,8 +702,9 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
             con->update.x, con->update.y, con->update.w, con->update.h);
 
         /* draw cursor */
-        draw_glyph(dp, con->font, '_', ATTR_DEFAULT,
-            x + con->curx * con->char_width, y + con->cury * con->char_height, 0);
+        color_from_attr(dp, ATTR_DEFAULT, &fg, &bg);
+        draw_console_char(dp, con->font, '_',
+            x + con->curx * con->char_width, y + con->cury * con->char_height, fg, bg, 0);
 
         if (flush) {
             sdl_draw(dp,
@@ -712,11 +717,36 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
     }
 }
 
+#define ARRAYLEN(a)     (sizeof(a)/sizeof(a[0]))
+
+extern Font font_rom8x16;
+extern Font font_cour_32;
+extern Font font_cambria_32;
+extern Font font_Vera_32;
+
+static Font *fonts[] = {
+    &font_rom8x16,              /* default font */
+    &font_cour_32,
+    &font_cambria_32,
+    &font_Vera_32,
+};
+
+Font *font_load_internal_font(char *name)
+{
+    int i;
+
+    for (i = 0; i < ARRAYLEN(fonts); i++) {
+        if (!strcmp(fonts[i]->name, name))
+            return fonts[i];
+    }
+    return NULL;
+}
+
 /*
  * load console font, works for:
  *  *.Fnn ROM font files e.g. VGA-ROM.F16, DOSJ-437.F19
  */
-Font *font_create(char *path)
+Font *font_load_disk_font(char *path)
 {
     int width = 8;
     int height = 16;
@@ -727,8 +757,8 @@ Font *font_create(char *path)
     s = strrchr(path, '.');
     if (s && s[1] == 'F')
         height = atoi(s+2);
-    if (width > 8) size *= 2;
     size = height * 256;
+    if (width > 8) size *= 2;
 
     fd = open(path, O_RDONLY);
     if (fd < 0) {
@@ -755,20 +785,23 @@ Font *font_create(char *path)
 Font *console_load_font(struct console *con, char *path)
 {
     Font *font = NULL;
-    extern Font font_rom8x16;
-    extern Font font_cour_32;
-    extern Font font_cambria_32;
-    extern Font font_vera_16;
 
     if (path)
-        font = font_create(path);
-    if (!font)
-        //font = &font_rom8x16;       /* default font rom8x16 */
-        //font = &font_cour_32;
-        font = &font_cambria_32;
+        font = font_load_internal_font(path);
+    if (font) printf("found %s\n", font->name);
+    if (!font) {
+        font = font_load_disk_font(path);
+        if (!font) {
+            printf("Can't find font '%s', using default %s\n", path, fonts[0]->name);
+            font = fonts[0];
+        }
+    }
+
+    /* older Microwindows MWCFONT struct compatibility */
     if (font->bpp == 0)          font->bpp = 1;          /* mwin default 1 bpp */
     if (font->bits_width == 0)   font->bits_width = 2;   /* mwin default 16 bits */
     if (font->offset_width == 0) font->offset_width = 4; /* mwin default 32 bits */
+
     con->font = font;
     con->char_height = font->height;
     con->char_width = font->maxwidth;
@@ -787,7 +820,10 @@ struct console *create_console(int width, int height)
     memset(con, 0, sizeof(struct console));
     con->cols = width;
     con->lines = height;
-    console_load_font(con, NULL);       /* loads rom8x16 */
+    //console_load_font(con, NULL);       /* loads rom8x16 */
+    //console_load_font(con, "cour_32");
+    //console_load_font(con, "cambria_32");
+    console_load_font(con, "Vera_32");
     //console_load_font(con, "VGA-ROM.F16");
     //console_load_font(con, "COMPAQP3.F16");
     //console_load_font(con, "DOSV-437.F16");
@@ -1171,10 +1207,10 @@ int main(int ac, char **av)
     if (!sdl_init()) exit(1);
     if (!(bb = create_pixmap(MWPF_DEFAULT, 640, 400))) exit(2);
     if (!(sdl = sdl_create_window(bb))) exit(3);
-    if (!(con = create_console(20, 10))) exit(4);
+    if (!(con = create_console(18, 8))) exit(4);
 
     for (;;) {
-        Rect update = con->update;          /* save update rect for dup console */
+        //Rect update = con->update;          /* save update rect for dup console */
         draw_console(con, bb, 5*8, 5*15, 1);
         //con->update = update;
         //draw_console(con, bb, 35*8, 5*15, 1);
@@ -1185,7 +1221,7 @@ int main(int ac, char **av)
         int x2 = random() % 640;
         int y1 = random() % 400;
         int y2 = random() % 400;
-        int r = random() % 40;
+        //int r = random() % 40;
         draw_line(bb, x1, y1, x2, y2);
         //draw_thick_line(bb, x1, y1, x2, y2, 6);
         //draw_circle(bb, x1, y1, r);
