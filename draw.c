@@ -71,6 +71,7 @@ struct console {
     int lastx;
     int lasty;
     Rect update;            /* console update region in cols/lines coordinates */
+    Drawable *dp;            //FIXME for testing only
     uint16_t text_ram[];    /* adaptor RAM (= cols * lines * 2) in single malloc */
 };
 
@@ -342,6 +343,165 @@ void draw_fill_rect_fast(Drawable *dp, int x1, int y1, int x2, int y2)
 //#define ATTR_DEFAULT 0x0F   /* bright white */
 #define ATTR_DEFAULT 0xF0   /* reverse ltgray */
 
+static int fast_sin_table[180] = {
+0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 26, 27, 28, 29, 30, 31, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 41, 42, 43, 44, 45, 46, 46, 47, 48, 49, 49, 50, 51, 51, 52, 53, 53, 54, 54, 55, 55, 56, 57, 57, 58, 58, 58, 59, 59, 60, 60, 60, 61, 61, 61, 62, 62, 62, 62, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 64, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 62, 62, 62, 62, 61, 61, 61, 60, 60, 60, 59, 59, 58, 58, 58, 57, 57, 56, 55, 55, 54, 54, 53, 53, 52, 51, 51, 50, 49, 49, 48, 47, 46, 46, 45, 44, 43, 42, 41, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 31, 30, 29, 28, 27, 26, 25, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 8, 7, 6, 5, 4, 3, 2, 1
+};
+
+/* fast fixed point 26.6 sin/cos for angles in degrees */
+static int fast_sin(int angle)
+{
+    angle %= 360;
+    if (angle < 0) angle += 360;
+    if (angle >= 180)               /* for angles >= 180 invert sign*/
+        return -fast_sin_table[angle % 180];
+    return fast_sin_table[angle];
+}
+
+static int fast_cos(int angle)
+{
+    return fast_sin(angle + 90);    /* cos just add 90 degrees */
+}
+#include <math.h>
+
+int angle = 75;
+int oversamp = 24;  // 20 min
+
+void draw_bitmap_rotate(Drawable *dp, Font *font, int c, int x, int y,
+    pixel_t fgpixel, pixel_t bgpixel, int drawbg)
+{
+    int minx, maxx, w;
+    int height = font->height;
+    int bitcount = 0;
+    uint32_t word = 0;
+    uint32_t bitmask = 1 << ((font->bits_width << 3) - 1);  /* MSB first */
+    Varptr imagebits;
+
+    c -= font->firstchar;
+    if (c < 0 || c > font->size)
+        c = font->defaultchar - font->firstchar;
+    if (font->offset.ptr8) {
+        switch (font->offset_width) {
+        case 1:
+            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr8[c];
+            break;
+        case 2:
+            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr16[c];
+            break;
+        case 4:
+        default:
+            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr32[c];
+            break;
+        }
+    } else
+        imagebits.ptr8 = font->bits.ptr8 + c * font->bits_width * font->height;
+
+    minx = maxx = x;
+    w = font->width? font->width[c]: font->maxwidth;
+    maxx += w;
+
+    /* fill remainder to max width if proportional glyph and console */
+    if (drawbg == 2 && w != font->maxwidth) {
+        pixel_t save = dp->color;
+        dp->color = bgpixel;
+        w = font->maxwidth - w;
+        draw_fill_rect_fast(dp, maxx, y, maxx + w, y + height);
+        dp->color = save;
+    }
+
+    while (height > 0) {
+        uint32_t *pixel32;
+        uint16_t *pixel16;
+        if (bitcount <= 0) {
+            bitcount = font->bits_width << 3;
+            switch (font->bits_width) {
+            case 1:
+                word = *imagebits.ptr8++;
+                break;
+            case 2:
+            default:
+                word = *imagebits.ptr16++;
+                break;
+            case 4:
+                word = *imagebits.ptr32++;
+                break;
+            }
+        }
+
+        int dx, dy;
+        //int dst_x = x;
+        //int dst_y = y;
+for (int i = 0; i < 2; i++) {
+    int s = i*oversamp;
+#if 1
+        int sin_a, cos_a;
+#if 0
+        switch (angle) {
+        case 0:
+            sin_a = 0; cos_a = 64;
+            break;
+        case 90:
+            sin_a = 64; cos_a = 0;
+            break;
+        case 180:
+            sin_a = 0; cos_a = -64;
+            break;
+        case 270:
+            sin_a = -64; cos_a = 0;
+            break;
+        default:
+            sin_a = fast_sin(angle);
+            cos_a = fast_cos(angle);
+        }
+#endif
+        sin_a = fast_sin(angle);
+        cos_a = fast_cos(angle);
+        int xoff = 0, yoff = 0;
+        dx = 200 + (((((x+xoff)<<6)+s)*cos_a - (((y+yoff)<<6)+s)*sin_a + (1<<11))>>12);
+        dy = (((((x+xoff)<<6)+s)*sin_a + (((y+yoff)<<6)+s)*cos_a + (1<<11))>>12);
+#else
+        if (angle < 0) angle += 360;
+        double a = (M_PI/180. * angle);
+        dx = (int)(x*cos(a) - y*sin(a));
+        dy = (int)(x*sin(a) + y*cos(a));
+#endif
+        if (dx < 0 || dx >= dp->width)
+            goto next;
+        if (dy < 0 || dy >= dp->height)
+            goto next;
+
+        pixel32 = (uint32_t *)(dp->pixels + dy * dp->pitch + dx * dp->bytespp);
+        pixel16 = (uint16_t *)pixel32;
+
+        switch (dp->pixtype) {
+        case MWPF_TRUECOLORARGB:    /* byte order B G R A */
+        case MWPF_TRUECOLORABGR:    /* byte order R G B A */
+            if (word & bitmask)
+                *pixel32 = fgpixel;
+            else if (drawbg)
+                *pixel32 = bgpixel;
+            pixel32++;
+            break;
+        case MWPF_TRUECOLOR565:
+            if (word & bitmask)
+                *pixel16 = fgpixel;
+            else if (drawbg)
+                *pixel16 = bgpixel;
+            pixel16++;
+            break;
+        }
+next:;
+}
+        word <<= 1;
+        --bitcount;
+        if (++x == maxx) {
+            x = minx;
+            ++y;
+            --height;
+            bitcount = 0;
+        }
+    }
+}
+
 /* draw a character bitmap */
 void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
     pixel_t fgpixel, pixel_t bgpixel, int drawbg)
@@ -395,6 +555,7 @@ void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
                 word = *imagebits.ptr8++;
                 break;
             case 2:
+            default:
                 word = *imagebits.ptr16++;
                 break;
             case 4:
@@ -404,6 +565,7 @@ void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
             pixel32 = (uint32_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
             pixel16 = (uint16_t *)pixel32;
         }
+        //FIXME add clipping
         switch (dp->pixtype) {
         case MWPF_TRUECOLORARGB:    /* byte order B G R A */
         case MWPF_TRUECOLORABGR:    /* byte order R G B A */
@@ -500,6 +662,7 @@ void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
     int w = font->width? font->width[c]: font->maxwidth;
     d.w = w;
     d.h = font->height;
+    //FIXME add clipping
 
     /* must clear background as alpha blit won't do it */
     if (drawbg) {
@@ -557,7 +720,7 @@ static void scrollup(struct console *con, int y1, int y2, unsigned char attr)
 
 
 /* scroll adapter RAM down from line y1 up to and including line y2 */
-static void scrolldn(struct console *con, int y1, int y2, unsigned char attr)
+void scrolldn(struct console *con, int y1, int y2, unsigned char attr)
 {
     unsigned char *vid = (unsigned char *)(con->text_ram + (con->lines-1) * con->cols);
     int pitch = con->cols * 2;
@@ -579,6 +742,12 @@ void console_movecursor(struct console *con, int x, int y)
     update_dirty_region(con, x, y, 1, 1);
 }
 
+static void clear_screen(Drawable *dp, struct console *con)
+{
+    memset(dp->pixels, 0, dp->size);
+    update_dirty_region(con, 0, 0, con->cols, con->lines);
+}
+
 /* output character at cursor location*/
 void console_textout(struct console *con, int c, int attr)
 {
@@ -587,8 +756,16 @@ void console_textout(struct console *con, int c, int attr)
     case '\b':  if (--con->curx < 0) con->curx = 0; goto update;
     case '\r':  con->curx = 0; goto update;
     case '\n':  goto scroll;
-    case '-':   scrolldn(con, 0, con->lines-1, ATTR_DEFAULT); return;   //FIXME
-    case '=':   scrollup(con, 0, con->lines-1, ATTR_DEFAULT); return;   //FIXME
+    //case '-':   scrolldn(con, 0, con->lines-1, ATTR_DEFAULT); return;   //FIXME
+    //case '=':   scrollup(con, 0, con->lines-1, ATTR_DEFAULT); return;   //FIXME
+    case '-':   angle--; clear_screen(con->dp, con); return;
+    case '=':   angle++; clear_screen(con->dp, con); return;
+    case ':':   if (--oversamp <= 0) oversamp = 1; clear_screen(con->dp, con);
+                printf("%d\n", oversamp);
+                return;
+    case ';':   ++oversamp;                        clear_screen(con->dp, con);
+                printf("%d\n", oversamp);
+                return;
     }
 
     con->text_ram[con->cury * con->cols + con->curx] = (c & 255) | ((attr & 255) << 8);
@@ -643,7 +820,7 @@ static void draw_console_char(Drawable *dp, Font *font, int c, int x, int y,
 {
     if (font->bpp == 8)
         draw_glyph(dp, font, c, x, y, fg, bg, drawbg);
-    else draw_bitmap(dp, font, c, x, y, fg, bg, drawbg);
+    else draw_bitmap_rotate(dp, font, c, x, y, fg, bg, drawbg);
 }
 
 /* draw characters from console text RAM */
@@ -669,6 +846,8 @@ static void draw_video_ram(Drawable *dp, struct console *con, int x1, int y1,
 void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 {
     pixel_t fg, bg;
+
+    con->dp = dp;   // FIXME for testing w/clear_screen()
 
     if (con->update.w >= 0 || con->update.h >= 0) {
 #if PROPORTIONAL_CONSOLE
@@ -865,7 +1044,7 @@ Drawable *create_pixmap(int pixtype, int width, int height)
     dp->height = height;
     dp->pitch = pitch;
     dp->pixels = (uint8_t *)&dp->data[0];
-    dp->size = size;
+    dp->size = height * pitch;
     dp->color = 0x00ffffff;
     return dp;
 }
@@ -1184,11 +1363,11 @@ static int sdl_nextevent(struct console *con, struct console *con2)
                 if (c == 'q') return 1;     //FIXME
                 if (c == '\r') {
                     console_textout(con, c, ATTR_DEFAULT);
-                    console_textout(con2, c, ATTR_DEFAULT);
+                    //console_textout(con2, c, ATTR_DEFAULT);
                     c = '\n';
                 }
                 console_textout(con, c, ATTR_DEFAULT);
-                console_textout(con2, c, ATTR_DEFAULT);
+                //console_textout(con2, c, ATTR_DEFAULT);
                 break;
         }
     }
@@ -1208,27 +1387,30 @@ int main(int ac, char **av)
     if (!(sdl = sdl_create_window(bb))) exit(3);
     if (!(con = create_console(14, 8))) exit(4);
     console_load_font(con, "cour_32_tt");
+    //console_load_font(con, "DOSJ-437.F19");
     if (!(con2 = create_console(14, 8))) exit(4);
-    console_load_font(con2, "cour_32");
+    con2->dp = bb;
+    //console_load_font(con2, "cour_32");
+    console_load_font(con2, "DOSJ-437.F19");
 
     for (;;) {
         //Rect update = con->update;          /* save update rect for dup console */
-        draw_console(con, bb, 5*8, 5*15, 1);
+        draw_console(con, bb, 15*8, 5*15, 1);
         //con->update = update;
-        draw_console(con2, bb, 50*8, 5*15, 1);
+        //draw_console(con2, bb, 35*8, 5*15, 1);
         if (sdl_nextevent(con, con2))
             break;
         //continue;
-        int x1 = random() % 640;
-        int x2 = random() % 640;
-        int y1 = random() % 400;
-        int y2 = random() % 400;
+        //int x1 = random() % 640;
+        //int x2 = random() % 640;
+        //int y1 = random() % 400;
+        //int y2 = random() % 400;
         //int r = random() % 40;
-        draw_line(bb, x1, y1, x2, y2);
+        //draw_line(bb, x1, y1, x2, y2);
         //draw_thick_line(bb, x1, y1, x2, y2, 6);
         //draw_circle(bb, x1, y1, r);
         //draw_flood_fill(bb, x1, y1);
-        draw_rect(bb, x1, y1, x2, y2);
+        //draw_rect(bb, x1, y1, x2, y2);
         //draw_fill_rect(bb, x1, y1, x2, y2);
         sdl_draw(bb, 0, 0, 0, 0);
     }
