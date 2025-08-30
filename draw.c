@@ -17,18 +17,16 @@
 #include <SDL2/SDL.h>
 #include "font.h"
 
-/* supported framebuffer pixel formats */
+/* supported internal framebuffer pixel formats */
 #define MWPF_DEFAULT       MWPF_TRUECOLORARGB
 #define MWPF_TRUECOLORARGB 0    /* 32bpp, memory byte order B, G, R, A */
 #define MWPF_TRUECOLORABGR 1    /* 32bpp, memory byte order R, G, B, A */
-#define MWPF_TRUECOLOR565  2    /* 16bpp, le unsigned short 5/6/5 RGB */
 
 #define MIN(a,b)      ((a) < (b) ? (a) : (b))
 #define MAX(a,b)      ((a) > (b) ? (a) : (b))
 
-typedef uint32_t pixel_t;   /* largest hardware pixel size */
-typedef uint8_t alpha_t;    /* size of alpha channel */
-typedef uint32_t color_t;   /* ARGB device independent color */
+typedef uint32_t Pixel;     /* internal pixel format (ARGB or ABGR) */
+typedef uint8_t Alpha;      /* size of alpha channel components */
 
 typedef struct point {
     int x, y;
@@ -39,7 +37,7 @@ typedef struct rect {
     int w, h;
 } Rect;
 
-struct palette {            /* palette entry */
+struct palentry {           /* palette entry */
     unsigned char r, g, b, a;
 };
 
@@ -50,12 +48,11 @@ typedef struct drawable {
     int width;              /* width in pixels */
     int height;             /* height in pixels */
     int pitch;              /* stride in bytes, offset to next pixel row */
-    pixel_t color;          /* rgb color for glyph blit mode */
-    //int mode;               /* blit mode: 1 = colormod */
+    Pixel color;            /* rgb color for glyph blit mode */
     void *window;           /* opaque pointer for associated window */
     int32_t size;           /* total size in bytes */
     uint8_t *pixels;        /* pixel data, normally points to data[] below */
-    pixel_t data[];         /* drawable memory allocated in single malloc */
+    Pixel data[];           /* drawable memory allocated in single malloc */
 } Drawable, Texture;
 
 struct console {
@@ -86,17 +83,14 @@ struct console {
 #define RGB2PIXELABGR(r,g,b)    \
     (0xFF000000UL | ((b) << 16) | ((g) << 8) | (r))
 
-/* create 16 bit 5/6/5 format pixel from RGB triplet */
-#define RGB2PIXEL565(r,g,b) \
-    ((((r) & 0xf8) << 8) | (((g) & 0xfc) << 3) | (((b) & 0xf8) >> 3))
-
 #define RGBDEF(r,g,b)   {r, g, b, 0}
 
+/* palette tables used for console attribute color conversions */
 #if 1
 /*
  * CGA palette for 16 color systems.
  */
-static struct palette ega_colormap[16] = {
+static struct palentry ega_colormap[16] = {
     RGBDEF( 0   , 0   , 0    ), /* black*/
     RGBDEF( 0   , 0   , 0xAA ), /* blue*/
     RGBDEF( 0   , 0xAA, 0    ), /* green*/
@@ -118,7 +112,7 @@ static struct palette ega_colormap[16] = {
 /*
  * Standard palette for 16 color systems.
  */
-static struct palette ega_colormap[16] = {
+static struct palentry ega_colormap[16] = {
     /* 16 EGA colors, arranged in VGA standard palette order*/
     RGBDEF( 0  , 0  , 0   ),    /* black*/
     RGBDEF( 0  , 0  , 128 ),    /* blue*/
@@ -139,7 +133,7 @@ static struct palette ega_colormap[16] = {
 };
 #elif 0
 /* 16 color palette for attribute mapping */
-static struct palette ega_colormap[16] = {
+static struct palentry ega_colormap[16] = {
     RGBDEF( 0  , 0  , 0   ),    /* 0 black*/
     RGBDEF( 0  , 0  , 192 ),    /* 1 blue*/
     RGBDEF( 0  , 192, 0   ),    /* 2 green*/
@@ -209,9 +203,6 @@ struct sdl_window *sdl_create_window(Drawable *dp)
         break;
     case MWPF_TRUECOLORABGR:
         pixelformat = SDL_PIXELFORMAT_ABGR8888;
-        break;
-    case MWPF_TRUECOLOR565:
-        pixelformat = SDL_PIXELFORMAT_RGB565;
         break;
     default:
         printf("SDL: Unsupported pixel format %d\n", dp->pixtype);
@@ -317,27 +308,6 @@ static int sdl_key(Uint8 state, SDL_Keysym sym)
     return kc;
 }
 
-/* draw horizontal line inclusive of (x1, x2) w/clipping */
-void draw_hline(Drawable *dp, int x1, int x2, int y)
-{
-    if ((unsigned)y >= dp->height)
-        return;
-
-    pixel_t *pixel = (pixel_t *)(dp->pixels + y * dp->pitch + x1 * dp->bytespp);
-    while (x1++ <= x2) {
-        if ((unsigned)x1 >= dp->width)
-            return;
-        *pixel++ = dp->color;
-    }
-}
-
-/* draw filled rectangle inclusive of (x1,y1; x2,y2) w/clipping */
-void draw_fill_rect_fast(Drawable *dp, int x1, int y1, int x2, int y2)
-{
-    while (y1 <= y2)
-        draw_hline(dp, x1, x2, y1++);
-}
-
 /* default display attribute (for testing)*/
 //#define ATTR_DEFAULT 0x09   /* bright blue */
 //#define ATTR_DEFAULT 0x0F   /* bright white */
@@ -345,7 +315,18 @@ void draw_fill_rect_fast(Drawable *dp, int x1, int y1, int x2, int y2)
 #define ATTR_DEFAULT 0x35
 
 static int fast_sin_table[180] = {
-0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 26, 27, 28, 29, 30, 31, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 41, 42, 43, 44, 45, 46, 46, 47, 48, 49, 49, 50, 51, 51, 52, 53, 53, 54, 54, 55, 55, 56, 57, 57, 58, 58, 58, 59, 59, 60, 60, 60, 61, 61, 61, 62, 62, 62, 62, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 64, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 62, 62, 62, 62, 61, 61, 61, 60, 60, 60, 59, 59, 58, 58, 58, 57, 57, 56, 55, 55, 54, 54, 53, 53, 52, 51, 51, 50, 49, 49, 48, 47, 46, 46, 45, 44, 43, 42, 41, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 31, 30, 29, 28, 27, 26, 25, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 8, 7, 6, 5, 4, 3, 2, 1
+0,   1,  2,  3,  4,  5,  6,  7,  8, 10, 11, 12, 13, 14, 15, /*  0 */
+16, 17, 18, 19, 20, 21, 22, 23, 25, 26, 27, 28, 29, 30, 31, /* 15 */
+31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 41, 42, 43, 44, /* 30 */
+45, 46, 46, 47, 48, 49, 49, 50, 51, 51, 52, 53, 53, 54, 54, /* 45 */
+55, 55, 56, 57, 57, 58, 58, 58, 59, 59, 60, 60, 60, 61, 61, /* 60 */
+61, 62, 62, 62, 62, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, /* 75 */
+64, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 62, 62, 62, 62, /* 90 */
+61, 61, 61, 60, 60, 60, 59, 59, 58, 58, 58, 57, 57, 56, 55, /* 105 */
+55, 54, 54, 53, 53, 52, 51, 51, 50, 49, 49, 48, 47, 46, 46, /* 120 */
+45, 44, 43, 42, 41, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32, /* 135 */
+31, 31, 30, 29, 28, 27, 26, 25, 23, 22, 21, 20, 19, 18, 17, /* 150 */
+16, 15, 14, 13, 12, 11, 10,  8,  7,  6,  5,  4,  3,  2,  1  /* 165 */
 };
 
 /* fast fixed point 26.6 sin/cos for angles in degrees */
@@ -369,14 +350,14 @@ int oversamp = 24;  // 20 min
 
 /* draw a character from bitmap font */
 void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
-    pixel_t fgpixel, pixel_t bgpixel, int drawbg, int rotangle)
+    Pixel fgpixel, Pixel bgpixel, int drawbg, int rotangle)
 {
     int minx, maxx, w, zerox, dspan;
     int height = font->height;
     int bitcount = 0;
     uint32_t word;
     uint32_t bitmask = 1 << ((font->bits_width << 3) - 1);  /* MSB first */
-    pixel_t *dst;
+    Pixel *dst;
     Varptr bits;
     int sin_a, cos_a, s;        /* for rotated bitmaps */
 
@@ -470,7 +451,7 @@ void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
             x = minx;
             ++y;
             bitcount = 0;
-            dst = (pixel_t *)((uint8_t *)dst + dspan);
+            dst = (Pixel *)((uint8_t *)dst + dspan);
             --height;
         }
     } while (height > 0);
@@ -478,11 +459,11 @@ void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
 
 /* draw a character from an antialiasing font */
 void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
-    pixel_t fgpixel, pixel_t bgpixel, int drawbg, int rotangle)
+    Pixel fgpixel, Pixel bgpixel, int drawbg, int rotangle)
 {
     int minx, maxx, w, zerox, dspan;
     int height = font->height;
-    pixel_t *dst;
+    Pixel *dst;
     Varptr bits;
     int sin_a, cos_a, s;        /* for rotated bitmaps */
 
@@ -523,11 +504,11 @@ void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
         zerox = 9999;
         dspan = dp->pitch - (w * dp->bytespp);
     }
-    dst = (pixel_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
+    dst = (Pixel *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
 
     do {
         s = 0;
-        alpha_t sa = (x < zerox)? *bits.ptr8++: 0;
+        Alpha sa = (x < zerox)? *bits.ptr8++: 0;
 
         do {
             if (rotangle) {
@@ -539,7 +520,7 @@ void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
                 if (dx < 0 || dx >= dp->width || dy < 0 || dy >= dp->height)
                     continue;
                 dst = (uint32_t *)(dp->pixels + dy * dp->pitch + dx * dp->bytespp);
-                if (!s && sa == 255) sa = 192;
+                if (!s && sa == 255) sa = 192;  /* experimental oversampled blend */
             }
             /* else FIXME add clipping for non-rotated case */
 
@@ -549,11 +530,11 @@ void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
             } else {
                 if (drawbg) *dst = bgpixel;
                 if (sa != 0) {
-                    pixel_t srb = ((sa * (fgpixel & 0xff00ff)) >> 8) & 0xff00ff;
-                    pixel_t sg =  ((sa * (fgpixel & 0x00ff00)) >> 8) & 0x00ff00;
-                    pixel_t da = 0xff - sa;
-                    pixel_t drb = *dst;
-                    pixel_t dg = drb & 0x00ff00;
+                    Pixel srb = ((sa * (fgpixel & 0xff00ff)) >> 8) & 0xff00ff;
+                    Pixel sg =  ((sa * (fgpixel & 0x00ff00)) >> 8) & 0x00ff00;
+                    Pixel da = 0xff - sa;
+                    Pixel drb = *dst;
+                    Pixel dg = drb & 0x00ff00;
                         drb = drb & 0xff00ff;
                     drb = ((drb * da >> 8) & 0xff00ff) + srb;
                     dg =   ((dg * da >> 8) & 0x00ff00) + sg;
@@ -569,7 +550,7 @@ void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
         if (x == maxx) {            /* finished with bitmap row? */
             x = minx;
             ++y;
-            dst = (pixel_t *)((uint8_t *)dst + dspan);
+            dst = (Pixel *)((uint8_t *)dst + dspan);
             --height;
         }
     } while (height > 0);
@@ -678,7 +659,7 @@ update:
 }
 
 /* convert EGA attribute to pixel value */
-static void color_from_attr(Drawable *dp, unsigned int attr, pixel_t *pfg, pixel_t *pbg)
+static void color_from_attr(Drawable *dp, unsigned int attr, Pixel *pfg, Pixel *pbg)
 {
     int fg = attr & 0x0F;
     int bg = (attr & 0x70) >> 4;
@@ -688,7 +669,7 @@ static void color_from_attr(Drawable *dp, unsigned int attr, pixel_t *pfg, pixel
     unsigned char bg_red = ega_colormap[bg].r;
     unsigned char bg_green = ega_colormap[bg].g;
     unsigned char bg_blue = ega_colormap[bg].b;
-    pixel_t fgpixel, bgpixel;
+    Pixel fgpixel, bgpixel;
 
     switch (dp->pixtype) {
     case MWPF_TRUECOLORARGB:    /* byte order B G R A */
@@ -699,17 +680,13 @@ static void color_from_attr(Drawable *dp, unsigned int attr, pixel_t *pfg, pixel
         fgpixel = RGB2PIXELABGR(fg_red, fg_green, fg_blue);
         bgpixel = RGB2PIXELABGR(bg_red, bg_green, bg_blue);
         break;
-    case MWPF_TRUECOLOR565:
-        fgpixel = RGB2PIXEL565(fg_red, fg_green, fg_blue);
-        bgpixel = RGB2PIXEL565(bg_red, bg_green, bg_blue);
-        break;
     }
     *pfg = fgpixel;
     *pbg = bgpixel;
 }
 
 static void draw_console_char(Drawable *dp, Font *font, int c, int x, int y,
-    pixel_t fg, pixel_t bg, int drawbg)
+    Pixel fg, Pixel bg, int drawbg)
 {
     if (font->bpp == 8)
         draw_glyph(dp, font, c, x, y, fg, bg, drawbg, angle);
@@ -721,7 +698,7 @@ static void draw_video_ram(Drawable *dp, struct console *con, int x1, int y1,
     int sx, int sy, int ex, int ey)
 {
     uint16_t *vidram = con->text_ram;
-    pixel_t fg, bg;
+    Pixel fg, bg;
 
     for (int y = sy; y < ey; y++) {
         int j = y * con->cols + sx;
@@ -738,7 +715,7 @@ static void draw_video_ram(Drawable *dp, struct console *con, int x1, int y1,
 /* Called periodically from the main loop */
 void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 {
-    pixel_t fg, bg;
+    Pixel fg, bg;
 
     con->dp = dp;   // FIXME for testing w/clear_screen()
 
@@ -898,11 +875,8 @@ Drawable *create_pixmap(int pixtype, int width, int height)
     case MWPF_TRUECOLORABGR:
         bpp = 32;
         break;
-    case MWPF_TRUECOLOR565:
-        bpp = 16;
-        break;
     default:
-        printf("Invalid pixel format\n");
+        printf("Invalid pixel format: %d\n", pixtype);
         return 0;
     }
     pitch = width * (bpp >> 3);
@@ -930,23 +904,37 @@ Drawable *create_pixmap(int pixtype, int width, int height)
 /* draw pixel w/clipping */
 void draw_point(Drawable *dp, int x, int y)
 {
-    pixel_t *pixel;
+    Pixel *pixel;
 
     if ((unsigned)x < dp->width && (unsigned)y < dp->height) {
-        pixel = (pixel_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
+        pixel = (Pixel *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
         *pixel = dp->color;
     }
 }
 
-pixel_t read_pixel(Drawable *dp, int x, int y)
+Pixel read_pixel(Drawable *dp, int x, int y)
 {
-    pixel_t *pixel;
+    Pixel *pixel;
 
     if ((unsigned)x < dp->width && (unsigned)y < dp->height) {
-        pixel = (pixel_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
+        pixel = (Pixel *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
         return *pixel;
     }
     return 0;
+}
+
+/* draw horizontal line inclusive of (x1, x2) w/clipping */
+void draw_hline(Drawable *dp, int x1, int x2, int y)
+{
+    if ((unsigned)y >= dp->height)
+        return;
+
+    Pixel *pixel = (Pixel *)(dp->pixels + y * dp->pitch + x1 * dp->bytespp);
+    while (x1++ <= x2) {
+        if ((unsigned)x1 >= dp->width)
+            return;
+        *pixel++ = dp->color;
+    }
 }
 
 /* draw vertical line inclusive of (y1, y2) w/clipping */
@@ -955,7 +943,7 @@ void draw_vline(Drawable *dp, int x, int y1, int y2)
     if ((unsigned)x >= dp->width)
         return;
 
-    pixel_t *pixel = (pixel_t *)(dp->pixels + y1 * dp->pitch + x * dp->bytespp);
+    Pixel *pixel = (Pixel *)(dp->pixels + y1 * dp->pitch + x * dp->bytespp);
     while (y1++ <= y2) {
         if ((unsigned)y1 >= dp->height)
             return;
@@ -992,6 +980,15 @@ void draw_fill_rect(Drawable *dp, int x1, int y1, int x2, int y2)
     while (ymin <= ymax)
         draw_hline(dp, xmin, xmax, ymin++);
 }
+
+#if UNUSED
+/* draw filled rectangle inclusive of (x1,y1; x2,y2) w/clipping */
+void draw_fill_rect_fast(Drawable *dp, int x1, int y1, int x2, int y2)
+{
+    while (y1 <= y2)
+        draw_hline(dp, x1, x2, y1++);
+}
+#endif
 
 void draw_line(Drawable *dp, int x1, int y1, int x2, int y2)
 {
@@ -1147,7 +1144,7 @@ void draw_flood_fill(Drawable *dp, int x, int y)
     Point curElement;
     Point stack[FLOOD_FILL_STACKSZ];
     int stackTop = -1;
-    pixel_t orgColor = read_pixel(dp, x, y);
+    Pixel orgColor = read_pixel(dp, x, y);
 
     if (dp->color == orgColor)
         return;
