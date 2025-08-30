@@ -364,7 +364,7 @@ static int fast_cos(int angle)
     return fast_sin(angle + 90);    /* cos is sin plus 90 degrees */
 }
 
-int angle = 75;
+int angle = 0;
 int oversamp = 24;  // 20 min
 
 /* draw a character from bitmap font */
@@ -376,7 +376,7 @@ void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
     int bitcount = 0;
     uint32_t word;
     uint32_t bitmask = 1 << ((font->bits_width << 3) - 1);  /* MSB first */
-    pixel_t *pixel;
+    pixel_t *dst;
     Varptr bits;
     int sin_a, cos_a, s;        /* for rotated bitmaps */
 
@@ -417,7 +417,7 @@ void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
         zerox = 9999;
         dspan = dp->pitch - (w * dp->bytespp);
     }
-    pixel = (uint32_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
+    dst = (uint32_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
 
     do {
         if (bitcount <= 0) {
@@ -434,29 +434,31 @@ void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
                 word = *bits.ptr32++;
                 break;
             }
-            //pixel = (uint32_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
         }
 
         s = 0;
         do {
             if (rotangle) {
                 int xoff = 0, yoff = 0;
-                int dx = 200 + ((cos_a * (((x+xoff) << 6) + s)
+                int dx =       ((cos_a * (((x+xoff) << 6) + s)
                                - sin_a * (((y+yoff) << 6) + s) + (1 << 11)) >> 12);
                 int dy =       ((sin_a * (((x+xoff) << 6) + s)
                                + cos_a * (((y+yoff) << 6) + s) + (1 << 11)) >> 12);
                 if (dx < 0 || dx >= dp->width || dy < 0 || dy >= dp->height)
                     continue;
-                pixel = (uint32_t *)(dp->pixels + dy * dp->pitch + dx * dp->bytespp);
+                dst = (uint32_t *)(dp->pixels + dy * dp->pitch + dx * dp->bytespp);
             }
+            /* else FIXME add clipping for non-rotated case */
 
+            /* write destination pixel */
             if (word & bitmask)
-                *pixel = fgpixel;
+                *dst = fgpixel;
             else if (drawbg)
-                *pixel = bgpixel;
-            pixel++;
-        } while(rotangle && (s+= oversamp) < oversamp+1);
+                *dst = bgpixel;
 
+        } while(rotangle && (s += oversamp) < oversamp+1);
+
+        dst++;
         word <<= 1;
         --bitcount;
         if (++x == zerox) {         /* start drawing extra background bits? */
@@ -467,9 +469,9 @@ void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
         if (x == maxx) {            /* finished with bitmap row? */
             x = minx;
             ++y;
-            --height;
             bitcount = 0;
-            pixel = (pixel_t *)((uint8_t *)pixel + dspan);
+            dst = (pixel_t *)((uint8_t *)dst + dspan);
+            --height;
         }
     } while (height > 0);
 }
@@ -480,7 +482,9 @@ void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
 {
     int minx, maxx, w, zerox, dspan;
     int height = font->height;
+    pixel_t *dst;
     Varptr bits;
+    int sin_a, cos_a, s;        /* for rotated bitmaps */
 
     c -= font->firstchar;
     if (c < 0 || c > font->size)
@@ -502,6 +506,11 @@ void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
         }
     } else  bits.ptr8 = font->bits.ptr8 + c * font->bits_width * font->height;
 
+    if (rotangle) {
+        sin_a = fast_sin(rotangle);
+        cos_a = fast_cos(rotangle);
+    }
+
     minx = x;
     w = font->width? font->width[c]: font->maxwidth;
     /* draw max font width background if proportional font and console output */
@@ -514,11 +523,27 @@ void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
         zerox = 9999;
         dspan = dp->pitch - (w * dp->bytespp);
     }
-    pixel_t *dst = (pixel_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
+    dst = (pixel_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
 
     do {
+        s = 0;
+        alpha_t sa = (x < zerox)? *bits.ptr8++: 0;
+
         do {
-            alpha_t sa = (x < zerox)? *bits.ptr8++: 0;
+            if (rotangle) {
+                int xoff = 0, yoff = 0;
+                int dx =       ((cos_a * (((x+xoff) << 6) + s)
+                               - sin_a * (((y+yoff) << 6) + s) + (1 << 11)) >> 12);
+                int dy =       ((sin_a * (((x+xoff) << 6) + s)
+                               + cos_a * (((y+yoff) << 6) + s) + (1 << 11)) >> 12);
+                if (dx < 0 || dx >= dp->width || dy < 0 || dy >= dp->height)
+                    continue;
+                dst = (uint32_t *)(dp->pixels + dy * dp->pitch + dx * dp->bytespp);
+                if (!s && sa == 255) sa = 192;
+            }
+            /* else FIXME add clipping for non-rotated case */
+
+            /* blend src alpha with destination */
             if (sa == 0xff) {
                 *dst = fgpixel;
             } else {
@@ -535,8 +560,10 @@ void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
                     *dst = drb + dg;
                 }
             }
-            dst++;
-        } while (0);
+
+        } while(rotangle && (s += oversamp) < oversamp+1);
+
+        dst++;
         if (++x == zerox)
             continue;
         if (x == maxx) {            /* finished with bitmap row? */
