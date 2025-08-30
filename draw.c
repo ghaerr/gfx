@@ -571,11 +571,6 @@ static void clear_line(struct console *con, int x1, int x2, int y, unsigned char
     for (x = x1; x <= x2; x++)
         con->text_ram[y * con->cols + x] = ' ' | (attr << 8);
     update_dirty_region(con, x1, y, x2-x1+1, 1);
-#if PROPORTIONAL_CONSOLE
-    /* FIXME somewhat kluge to clear full line when using proportional fonts */
-    if (con->font->width)
-        update_dirty_region(con, 0, 0, con->cols, con->lines);
-#endif
 }
 
 /* scroll adapter RAM up from line y1 up to and including line y2 */
@@ -721,21 +716,6 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
     con->dp = dp;   // FIXME for testing w/clear_screen()
 
     if (con->update.w >= 0 || con->update.h >= 0) {
-#if PROPORTIONAL_CONSOLE
-        /* FIXME kluge to clear background for proportional fonts from scrollup */
-        if (con->update.x == 0 && con->update.y == 0 &&
-            con->update.w == con->cols && con->update.h == con->lines) {
-            pixel_t color = dp->color;
-            dp->color = 0;
-            draw_fill_rect(dp,
-                x + con->update.x * con->char_width,
-                y + con->update.y * con->char_height,
-                x + con->update.w * con->char_width,
-                y + con->update.h * con->char_height);
-            dp->color = color;
-        }
-#endif
-
         /* draw text bitmaps from adaptor RAM */
         draw_video_ram(dp, con, x, y,
             con->update.x, con->update.y, con->update.w, con->update.h);
@@ -1257,8 +1237,8 @@ int main(int ac, char **av)
     if (!(bb = create_pixmap(MWPF_DEFAULT, 800, 400))) exit(2);
     if (!(sdl = sdl_create_window(bb))) exit(3);
     if (!(con = create_console(14, 8))) exit(4);
-    //console_load_font(con, "cour_32_tt");
-    console_load_font(con, "cour_32");
+    console_load_font(con, "cour_32_tt");
+    //console_load_font(con, "cour_32");
     //console_load_font(con, "DOSJ-437.F19");
     if (!(con2 = create_console(14, 8))) exit(4);
     con2->dp = bb;
