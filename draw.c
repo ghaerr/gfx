@@ -345,14 +345,14 @@ static int fast_cos(int angle)
     return fast_sin(angle + 90);    /* cos is sin plus 90 degrees */
 }
 
-int angle = 0;
-int oversamp = 24;  // 20 min
+static int angle = 0;
+static int oversamp = 24;           /* min 20 for no holes in diagonal oversampling */
 
 /* draw a character from bitmap font */
-void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
+void draw_bitmap(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, int yoff,
     Pixel fgpixel, Pixel bgpixel, int drawbg, int rotangle)
 {
-    int minx, maxx, w, zerox, dspan;
+    int x, y, minx, maxx, w, zerox, dspan;
     int height = font->height;
     int bitcount = 0;
     uint32_t word;
@@ -386,6 +386,7 @@ void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
         cos_a = fast_cos(rotangle);
     }
 
+    x = y = 0;
     minx = x;
     w = font->width? font->width[c]: font->maxwidth;
     /* draw max font width background if proportional font and console output */
@@ -398,7 +399,7 @@ void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
         zerox = 9999;
         dspan = dp->pitch - (w * dp->bytespp);
     }
-    dst = (uint32_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
+    dst = (uint32_t *)(dp->pixels + (sy+yoff) * dp->pitch + (sx+xoff) * dp->bytespp);
 
     do {
         if (bitcount <= 0) {
@@ -420,11 +421,10 @@ void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
         s = 0;
         do {
             if (rotangle) {
-                int xoff = 0, yoff = 0;
-                int dx =       ((cos_a * (((x+xoff) << 6) + s)
-                               - sin_a * (((y+yoff) << 6) + s) + (1 << 11)) >> 12);
-                int dy =       ((sin_a * (((x+xoff) << 6) + s)
-                               + cos_a * (((y+yoff) << 6) + s) + (1 << 11)) >> 12);
+                int dx = sx + ((cos_a * (((x+xoff) << 6) + s)
+                              - sin_a * (((y+yoff) << 6) + s) + (1 << 11)) >> 12);
+                int dy = sy + ((sin_a * (((x+xoff) << 6) + s)
+                              + cos_a * (((y+yoff) << 6) + s) + (1 << 11)) >> 12);
                 if (dx < 0 || dx >= dp->width || dy < 0 || dy >= dp->height)
                     continue;
                 dst = (uint32_t *)(dp->pixels + dy * dp->pitch + dx * dp->bytespp);
@@ -458,10 +458,10 @@ void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
 }
 
 /* draw a character from an antialiasing font */
-void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
+void draw_glyph(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, int yoff,
     Pixel fgpixel, Pixel bgpixel, int drawbg, int rotangle)
 {
-    int minx, maxx, w, zerox, dspan;
+    int x, y, minx, maxx, w, zerox, dspan;
     int height = font->height;
     Pixel *dst;
     Varptr bits;
@@ -492,6 +492,7 @@ void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
         cos_a = fast_cos(rotangle);
     }
 
+    x = y = 0;
     minx = x;
     w = font->width? font->width[c]: font->maxwidth;
     /* draw max font width background if proportional font and console output */
@@ -504,7 +505,7 @@ void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
         zerox = 9999;
         dspan = dp->pitch - (w * dp->bytespp);
     }
-    dst = (Pixel *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
+    dst = (Pixel *)(dp->pixels + (sy+yoff) * dp->pitch + (sx+xoff) * dp->bytespp);
 
     do {
         s = 0;
@@ -512,11 +513,10 @@ void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
 
         do {
             if (rotangle) {
-                int xoff = 0, yoff = 0;
-                int dx =       ((cos_a * (((x+xoff) << 6) + s)
-                               - sin_a * (((y+yoff) << 6) + s) + (1 << 11)) >> 12);
-                int dy =       ((sin_a * (((x+xoff) << 6) + s)
-                               + cos_a * (((y+yoff) << 6) + s) + (1 << 11)) >> 12);
+                int dx = sx + ((cos_a * (((x+xoff) << 6) + s)
+                              - sin_a * (((y+yoff) << 6) + s) + (1 << 11)) >> 12);
+                int dy = sy + ((sin_a * (((x+xoff) << 6) + s)
+                              + cos_a * (((y+yoff) << 6) + s) + (1 << 11)) >> 12);
                 if (dx < 0 || dx >= dp->width || dy < 0 || dy >= dp->height)
                     continue;
                 dst = (uint32_t *)(dp->pixels + dy * dp->pitch + dx * dp->bytespp);
@@ -686,11 +686,11 @@ static void color_from_attr(Drawable *dp, unsigned int attr, Pixel *pfg, Pixel *
 }
 
 static void draw_console_char(Drawable *dp, Font *font, int c, int x, int y,
-    Pixel fg, Pixel bg, int drawbg)
+    int xoff, int yoff, Pixel fg, Pixel bg, int drawbg)
 {
     if (font->bpp == 8)
-        draw_glyph(dp, font, c, x, y, fg, bg, drawbg, angle);
-    else draw_bitmap(dp, font, c, x, y, fg, bg, drawbg, angle);
+        draw_glyph(dp, font, c, x, y, xoff, yoff, fg, bg, drawbg, angle);
+    else draw_bitmap(dp, font, c, x, y, xoff, yoff, fg, bg, drawbg, angle);
 }
 
 /* draw characters from console text RAM */
@@ -705,8 +705,8 @@ static void draw_video_ram(Drawable *dp, struct console *con, int x1, int y1,
         for (int x = sx; x < ex; x++) {
             uint16_t chattr = vidram[j];
             color_from_attr(dp, chattr >> 8, &fg, &bg);
-            draw_console_char(dp, con->font, chattr & 255,
-                x1 + x * con->char_width, y1 + y * con->char_height, fg, bg, 2);
+            draw_console_char(dp, con->font, chattr & 255, x1, y1,
+                x * con->char_width, y * con->char_height, fg, bg, 2);
             j++;
         }
     }
@@ -726,8 +726,8 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 
         /* draw cursor */
         color_from_attr(dp, ATTR_DEFAULT, &fg, &bg);
-        draw_console_char(dp, con->font, '_',
-            x + con->curx * con->char_width, y + con->cury * con->char_height, fg, bg, 0);
+        draw_console_char(dp, con->font, '_', x, y,
+            con->curx * con->char_width, con->cury * con->char_height, fg, bg, 0);
 
         if (flush) {
             sdl_draw(dp,
@@ -1238,11 +1238,11 @@ static int sdl_nextevent(struct console *con, struct console *con2)
                 if (c == 'q') return 1;     //FIXME
                 if (c == '\r') {
                     console_textout(con, c, ATTR_DEFAULT);
-                    //console_textout(con2, c, ATTR_DEFAULT);
+                    console_textout(con2, c, ATTR_DEFAULT);
                     c = '\n';
                 }
                 console_textout(con, c, ATTR_DEFAULT);
-                //console_textout(con2, c, ATTR_DEFAULT);
+                console_textout(con2, c, ATTR_DEFAULT);
                 break;
         }
     }
@@ -1258,7 +1258,7 @@ int main(int ac, char **av)
     struct console *con2;
 
     if (!sdl_init()) exit(1);
-    if (!(bb = create_pixmap(MWPF_DEFAULT, 800, 400))) exit(2);
+    if (!(bb = create_pixmap(MWPF_DEFAULT, 640, 400))) exit(2);
     if (!(sdl = sdl_create_window(bb))) exit(3);
     if (!(con = create_console(14, 8))) exit(4);
     console_load_font(con, "cour_32_tt");
@@ -1266,14 +1266,14 @@ int main(int ac, char **av)
     //console_load_font(con, "DOSJ-437.F19");
     if (!(con2 = create_console(14, 8))) exit(4);
     con2->dp = bb;
-    //console_load_font(con2, "cour_32");
-    console_load_font(con2, "DOSJ-437.F19");
+    console_load_font(con2, "cour_32");
+    //console_load_font(con2, "DOSJ-437.F19");
 
     for (;;) {
         //Rect update = con->update;          /* save update rect for dup console */
-        draw_console(con, bb, 15*8, 5*15, 1);
+        draw_console(con, bb, 10*8, 5*15, 1);
         //con->update = update;
-        //draw_console(con2, bb, 35*8, 5*15, 1);
+        draw_console(con2, bb, 50*8, 5*15, 1);
         if (sdl_nextevent(con, con2))
             break;
         //continue;
