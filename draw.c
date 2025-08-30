@@ -349,7 +349,7 @@ static int angle = 0;
 static int oversamp = 24;           /* min 20 for no holes in diagonal oversampling */
 
 /* draw a character from bitmap font */
-void draw_bitmap(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, int yoff,
+void draw_font_bitmap(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, int yoff,
     Pixel fgpixel, Pixel bgpixel, int drawbg, int rotangle)
 {
     int x, y, minx, maxx, w, zerox, dspan;
@@ -463,7 +463,7 @@ void draw_bitmap(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, int 
 }
 
 /* draw a character from an antialiasing font */
-void draw_glyph(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, int yoff,
+void draw_font_alpha(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, int yoff,
     Pixel fgpixel, Pixel bgpixel, int drawbg, int rotangle)
 {
     int x, y, minx, maxx, w, zerox, dspan;
@@ -564,6 +564,14 @@ void draw_glyph(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, int y
             --height;
         }
     } while (height > 0);
+}
+
+void draw_font_char(Drawable *dp, Font *font, int c, int x, int y, int xoff, int yoff,
+    Pixel fg, Pixel bg, int drawbg)
+{
+    if (font->bpp == 8)
+        draw_font_alpha(dp, font, c, x, y, xoff, yoff, fg, bg, drawbg, angle);
+    else draw_font_bitmap(dp, font, c, x, y, xoff, yoff, fg, bg, drawbg, angle);
 }
 
 /* update dirty rectangle in console coordinates */
@@ -695,16 +703,8 @@ static void color_from_attr(Drawable *dp, unsigned int attr, Pixel *pfg, Pixel *
     *pbg = bgpixel;
 }
 
-static void draw_console_char(Drawable *dp, Font *font, int c, int x, int y,
-    int xoff, int yoff, Pixel fg, Pixel bg, int drawbg)
-{
-    if (font->bpp == 8)
-        draw_glyph(dp, font, c, x, y, xoff, yoff, fg, bg, drawbg, angle);
-    else draw_bitmap(dp, font, c, x, y, xoff, yoff, fg, bg, drawbg, angle);
-}
-
 /* draw characters from console text RAM */
-static void draw_video_ram(Drawable *dp, struct console *con, int x1, int y1,
+static void draw_console_ram(Drawable *dp, struct console *con, int x1, int y1,
     int sx, int sy, int ex, int ey)
 {
     uint16_t *vidram = con->text_ram;
@@ -715,7 +715,7 @@ static void draw_video_ram(Drawable *dp, struct console *con, int x1, int y1,
         for (int x = sx; x < ex; x++) {
             uint16_t chattr = vidram[j];
             color_from_attr(dp, chattr >> 8, &fg, &bg);
-            draw_console_char(dp, con->font, chattr & 255, x1, y1,
+            draw_font_char(dp, con->font, chattr & 255, x1, y1,
                 x * con->char_width, y * con->char_height, fg, bg, 2);
             j++;
         }
@@ -731,12 +731,12 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 
     if (con->update.w >= 0 || con->update.h >= 0) {
         /* draw text bitmaps from adaptor RAM */
-        draw_video_ram(dp, con, x, y,
+        draw_console_ram(dp, con, x, y,
             con->update.x, con->update.y, con->update.w, con->update.h);
 
         /* draw cursor */
         color_from_attr(dp, ATTR_DEFAULT, &fg, &bg);
-        draw_console_char(dp, con->font, '_', x, y,
+        draw_font_char(dp, con->font, '_', x, y,
             con->curx * con->char_width, con->cury * con->char_height, fg, bg, 0);
 
         if (flush) {
