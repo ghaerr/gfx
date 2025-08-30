@@ -341,7 +341,8 @@ void draw_fill_rect_fast(Drawable *dp, int x1, int y1, int x2, int y2)
 /* default display attribute (for testing)*/
 //#define ATTR_DEFAULT 0x09   /* bright blue */
 //#define ATTR_DEFAULT 0x0F   /* bright white */
-#define ATTR_DEFAULT 0xF0   /* reverse ltgray */
+//#define ATTR_DEFAULT 0xF0   /* reverse ltgray */
+#define ATTR_DEFAULT 0x35
 
 static int fast_sin_table[180] = {
 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 26, 27, 28, 29, 30, 31, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 41, 42, 43, 44, 45, 46, 46, 47, 48, 49, 49, 50, 51, 51, 52, 53, 53, 54, 54, 55, 55, 56, 57, 57, 58, 58, 58, 59, 59, 60, 60, 60, 61, 61, 61, 62, 62, 62, 62, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 64, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 62, 62, 62, 62, 61, 61, 61, 60, 60, 60, 59, 59, 58, 58, 58, 57, 57, 56, 55, 55, 54, 54, 53, 53, 52, 51, 51, 50, 49, 49, 48, 47, 46, 46, 45, 44, 43, 42, 41, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 31, 30, 29, 28, 27, 26, 25, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 8, 7, 6, 5, 4, 3, 2, 1
@@ -350,331 +351,201 @@ static int fast_sin_table[180] = {
 /* fast fixed point 26.6 sin/cos for angles in degrees */
 static int fast_sin(int angle)
 {
-    angle %= 360;
-    if (angle < 0) angle += 360;
+    //angle %= 360;
+    if (angle >= 360) angle -= 360;
+    else if (angle < 0) angle += 360;
     if (angle >= 180)               /* for angles >= 180 invert sign*/
-        return -fast_sin_table[angle % 180];
+        return -fast_sin_table[angle - 180];
     return fast_sin_table[angle];
 }
 
 static int fast_cos(int angle)
 {
-    return fast_sin(angle + 90);    /* cos just add 90 degrees */
+    return fast_sin(angle + 90);    /* cos is sin plus 90 degrees */
 }
-#include <math.h>
 
 int angle = 75;
 int oversamp = 24;  // 20 min
 
-void draw_bitmap_rotate(Drawable *dp, Font *font, int c, int x, int y,
-    pixel_t fgpixel, pixel_t bgpixel, int drawbg)
-{
-    int minx, maxx, w;
-    int height = font->height;
-    int bitcount = 0;
-    uint32_t word = 0;
-    uint32_t bitmask = 1 << ((font->bits_width << 3) - 1);  /* MSB first */
-    Varptr imagebits;
-
-    c -= font->firstchar;
-    if (c < 0 || c > font->size)
-        c = font->defaultchar - font->firstchar;
-    if (font->offset.ptr8) {
-        switch (font->offset_width) {
-        case 1:
-            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr8[c];
-            break;
-        case 2:
-            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr16[c];
-            break;
-        case 4:
-        default:
-            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr32[c];
-            break;
-        }
-    } else
-        imagebits.ptr8 = font->bits.ptr8 + c * font->bits_width * font->height;
-
-    minx = maxx = x;
-    w = font->width? font->width[c]: font->maxwidth;
-    maxx += w;
-
-    /* fill remainder to max width if proportional glyph and console */
-    if (drawbg == 2 && w != font->maxwidth) {
-        pixel_t save = dp->color;
-        dp->color = bgpixel;
-        w = font->maxwidth - w;
-        draw_fill_rect_fast(dp, maxx, y, maxx + w, y + height);
-        dp->color = save;
-    }
-
-    while (height > 0) {
-        uint32_t *pixel32;
-        uint16_t *pixel16;
-        if (bitcount <= 0) {
-            bitcount = font->bits_width << 3;
-            switch (font->bits_width) {
-            case 1:
-                word = *imagebits.ptr8++;
-                break;
-            case 2:
-            default:
-                word = *imagebits.ptr16++;
-                break;
-            case 4:
-                word = *imagebits.ptr32++;
-                break;
-            }
-        }
-
-        int dx, dy;
-        //int dst_x = x;
-        //int dst_y = y;
-for (int i = 0; i < 2; i++) {
-    int s = i*oversamp;
-#if 1
-        int sin_a, cos_a;
-#if 0
-        switch (angle) {
-        case 0:
-            sin_a = 0; cos_a = 64;
-            break;
-        case 90:
-            sin_a = 64; cos_a = 0;
-            break;
-        case 180:
-            sin_a = 0; cos_a = -64;
-            break;
-        case 270:
-            sin_a = -64; cos_a = 0;
-            break;
-        default:
-            sin_a = fast_sin(angle);
-            cos_a = fast_cos(angle);
-        }
-#endif
-        sin_a = fast_sin(angle);
-        cos_a = fast_cos(angle);
-        int xoff = 0, yoff = 0;
-        dx = 200 + (((((x+xoff)<<6)+s)*cos_a - (((y+yoff)<<6)+s)*sin_a + (1<<11))>>12);
-        dy = (((((x+xoff)<<6)+s)*sin_a + (((y+yoff)<<6)+s)*cos_a + (1<<11))>>12);
-#else
-        if (angle < 0) angle += 360;
-        double a = (M_PI/180. * angle);
-        dx = (int)(x*cos(a) - y*sin(a));
-        dy = (int)(x*sin(a) + y*cos(a));
-#endif
-        if (dx < 0 || dx >= dp->width)
-            goto next;
-        if (dy < 0 || dy >= dp->height)
-            goto next;
-
-        pixel32 = (uint32_t *)(dp->pixels + dy * dp->pitch + dx * dp->bytespp);
-        pixel16 = (uint16_t *)pixel32;
-
-        switch (dp->pixtype) {
-        case MWPF_TRUECOLORARGB:    /* byte order B G R A */
-        case MWPF_TRUECOLORABGR:    /* byte order R G B A */
-            if (word & bitmask)
-                *pixel32 = fgpixel;
-            else if (drawbg)
-                *pixel32 = bgpixel;
-            pixel32++;
-            break;
-        case MWPF_TRUECOLOR565:
-            if (word & bitmask)
-                *pixel16 = fgpixel;
-            else if (drawbg)
-                *pixel16 = bgpixel;
-            pixel16++;
-            break;
-        }
-next:;
-}
-        word <<= 1;
-        --bitcount;
-        if (++x == maxx) {
-            x = minx;
-            ++y;
-            --height;
-            bitcount = 0;
-        }
-    }
-}
-
-/* draw a character bitmap */
+/* draw a character from bitmap font */
 void draw_bitmap(Drawable *dp, Font *font, int c, int x, int y,
-    pixel_t fgpixel, pixel_t bgpixel, int drawbg)
+    pixel_t fgpixel, pixel_t bgpixel, int drawbg, int rotangle)
 {
-    int minx, maxx, w;
+    int minx, maxx, w, zerox, dspan;
     int height = font->height;
     int bitcount = 0;
-    uint32_t word = 0;
+    uint32_t word;
     uint32_t bitmask = 1 << ((font->bits_width << 3) - 1);  /* MSB first */
-    Varptr imagebits;
+    pixel_t *pixel;
+    Varptr bits;
+    int sin_a, cos_a, s;        /* for rotated bitmaps */
 
     c -= font->firstchar;
     if (c < 0 || c > font->size)
         c = font->defaultchar - font->firstchar;
+
+    /* get glyph bitmap start */
     if (font->offset.ptr8) {
         switch (font->offset_width) {
         case 1:
-            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr8[c];
+            bits.ptr8 = font->bits.ptr8 + font->offset.ptr8[c];
             break;
         case 2:
-            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr16[c];
+            bits.ptr8 = font->bits.ptr8 + font->offset.ptr16[c];
             break;
         case 4:
         default:
-            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr32[c];
+            bits.ptr8 = font->bits.ptr8 + font->offset.ptr32[c];
             break;
         }
-    } else
-        imagebits.ptr8 = font->bits.ptr8 + c * font->bits_width * font->height;
+    } else  bits.ptr8 = font->bits.ptr8 + c * font->bits_width * font->height;
 
-    minx = maxx = x;
-    w = font->width? font->width[c]: font->maxwidth;
-    maxx += w;
-
-    /* fill remainder to max width if proportional glyph and console */
-    if (drawbg == 2 && w != font->maxwidth) {
-        pixel_t save = dp->color;
-        dp->color = bgpixel;
-        w = font->maxwidth - w;
-        draw_fill_rect_fast(dp, maxx, y, maxx + w, y + height);
-        dp->color = save;
+    if (rotangle) {
+        sin_a = fast_sin(rotangle);
+        cos_a = fast_cos(rotangle);
     }
 
-    while (height > 0) {
-        uint32_t *pixel32;
-        uint16_t *pixel16;
+    minx = x;
+    w = font->width? font->width[c]: font->maxwidth;
+    /* draw max font width background if proportional font and console output */
+    if (drawbg == 2 && w != font->maxwidth) {
+        zerox = minx + w;
+        maxx = zerox + (font->maxwidth - w);
+        dspan = dp->pitch - ((maxx - minx) * dp->bytespp);
+    } else {
+        maxx = minx + w;
+        zerox = 9999;
+        dspan = dp->pitch - (w * dp->bytespp);
+    }
+    pixel = (uint32_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
+
+    do {
         if (bitcount <= 0) {
             bitcount = font->bits_width << 3;
             switch (font->bits_width) {
             case 1:
-                word = *imagebits.ptr8++;
+                word = *bits.ptr8++;
                 break;
             case 2:
             default:
-                word = *imagebits.ptr16++;
+                word = *bits.ptr16++;
                 break;
             case 4:
-                word = *imagebits.ptr32++;
+                word = *bits.ptr32++;
                 break;
             }
-            pixel32 = (uint32_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
-            pixel16 = (uint16_t *)pixel32;
+            //pixel = (uint32_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
         }
-        //FIXME add clipping
-        switch (dp->pixtype) {
-        case MWPF_TRUECOLORARGB:    /* byte order B G R A */
-        case MWPF_TRUECOLORABGR:    /* byte order R G B A */
+
+        s = 0;
+        do {
+            if (rotangle) {
+                int xoff = 0, yoff = 0;
+                int dx = 200 + ((cos_a * (((x+xoff) << 6) + s)
+                               - sin_a * (((y+yoff) << 6) + s) + (1 << 11)) >> 12);
+                int dy =       ((sin_a * (((x+xoff) << 6) + s)
+                               + cos_a * (((y+yoff) << 6) + s) + (1 << 11)) >> 12);
+                if (dx < 0 || dx >= dp->width || dy < 0 || dy >= dp->height)
+                    continue;
+                pixel = (uint32_t *)(dp->pixels + dy * dp->pitch + dx * dp->bytespp);
+            }
+
             if (word & bitmask)
-                *pixel32 = fgpixel;
+                *pixel = fgpixel;
             else if (drawbg)
-                *pixel32 = bgpixel;
-            pixel32++;
-            break;
-        case MWPF_TRUECOLOR565:
-            if (word & bitmask)
-                *pixel16 = fgpixel;
-            else if (drawbg)
-                *pixel16 = bgpixel;
-            pixel16++;
-            break;
-        }
+                *pixel = bgpixel;
+            pixel++;
+        } while(rotangle && (s+= oversamp) < oversamp+1);
+
         word <<= 1;
         --bitcount;
-        if (++x == maxx) {
+        if (++x == zerox) {         /* start drawing extra background bits? */
+            word = 0;
+            bitcount = 9999;
+            continue;
+        }
+        if (x == maxx) {            /* finished with bitmap row? */
             x = minx;
             ++y;
             --height;
             bitcount = 0;
+            pixel = (pixel_t *)((uint8_t *)pixel + dspan);
         }
-    }
+    } while (height > 0);
 }
 
-/* alpha blend glyph's 8-bit alpha channel onto drawable */
-void blit_alphabytes(Drawable *td, const Rect *drect, alpha_t *src, pixel_t color)
+/* draw a character from an antialiasing font */
+void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
+    pixel_t fgpixel, pixel_t bgpixel, int drawbg, int rotangle)
 {
-    //unassert(srect->w == drect->w);   //FIXME check why src width can != dst width
-    /* src and dst height can differ, will use dst height for drawing */
-    pixel_t *dst = (pixel_t *)(td->pixels + drect->y * td->pitch + drect->x * td->bytespp);
-    //alpha_t *src = (alpha_t *)(ts->pixels + srect->y * ts->pitch + srect->x * ts->bytespp);
+    int minx, maxx, w, zerox, dspan;
+    int height = font->height;
+    Varptr bits;
 
-    int dspan = td->pitch - (drect->w * td->bytespp);
-    int sspan = 0; //ts->pitch - drect->w;
-    int y = drect->h;
+    c -= font->firstchar;
+    if (c < 0 || c > font->size)
+        c = font->defaultchar - font->firstchar;
+
+    /* get glyph alpha bytes */
+    if (font->offset.ptr8) {
+        switch (font->offset_width) {
+        case 1:
+            bits.ptr8 = font->bits.ptr8 + font->offset.ptr8[c];
+            break;
+        case 2:
+            bits.ptr8 = font->bits.ptr8 + font->offset.ptr16[c];
+            break;
+        case 4:
+        default:
+            bits.ptr8 = font->bits.ptr8 + font->offset.ptr32[c];
+            break;
+        }
+    } else  bits.ptr8 = font->bits.ptr8 + c * font->bits_width * font->height;
+
+    minx = x;
+    w = font->width? font->width[c]: font->maxwidth;
+    /* draw max font width background if proportional font and console output */
+    if (drawbg == 2 && w != font->maxwidth) {
+        zerox = minx + w;
+        maxx = zerox + (font->maxwidth - w);
+        dspan = dp->pitch - ((maxx - minx) * dp->bytespp);
+    } else {
+        maxx = minx + w;
+        zerox = 9999;
+        dspan = dp->pitch - (w * dp->bytespp);
+    }
+    pixel_t *dst = (pixel_t *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
+
     do {
-        int x = drect->w;
         do {
-            alpha_t sa = *src++;
-            if (sa != 0) {
-                pixel_t srb = ((sa * (color & 0xff00ff)) >> 8) & 0xff00ff;
-                pixel_t sg =  ((sa * (color & 0x00ff00)) >> 8) & 0x00ff00;
-                if (sa != 0xff) {
+            alpha_t sa = (x < zerox)? *bits.ptr8++: 0;
+            if (sa == 0xff) {
+                *dst = fgpixel;
+            } else {
+                if (drawbg) *dst = bgpixel;
+                if (sa != 0) {
+                    pixel_t srb = ((sa * (fgpixel & 0xff00ff)) >> 8) & 0xff00ff;
+                    pixel_t sg =  ((sa * (fgpixel & 0x00ff00)) >> 8) & 0x00ff00;
                     pixel_t da = 0xff - sa;
                     pixel_t drb = *dst;
                     pixel_t dg = drb & 0x00ff00;
-                           drb = drb & 0xff00ff;
+                        drb = drb & 0xff00ff;
                     drb = ((drb * da >> 8) & 0xff00ff) + srb;
                     dg =   ((dg * da >> 8) & 0x00ff00) + sg;
                     *dst = drb + dg;
-                } else {
-                    *dst = srb + sg;
                 }
             }
             dst++;
-        } while (--x > 0);
-        dst = (pixel_t *)((uint8_t *)dst + dspan);
-        src = (alpha_t *)((uint8_t *)src + sspan);
-    } while (--y > 0);
-}
-
-/* draw a character glyph */
-void draw_glyph(Drawable *dp, Font *font, int c, int x, int y,
-    pixel_t fgpixel, pixel_t bgpixel, int drawbg)
-{
-    Varptr imagebits;
-
-    c -= font->firstchar;
-    if (c < 0 || c > font->size)
-        c = font->defaultchar - font->firstchar;
-    if (font->offset.ptr8) {
-        switch (font->offset_width) {
-        case 1:
-            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr8[c];
-            break;
-        case 2:
-            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr16[c];
-            break;
-        case 4:
-        default:
-            imagebits.ptr8 = font->bits.ptr8 + font->offset.ptr32[c];
-            break;
+        } while (0);
+        if (++x == zerox)
+            continue;
+        if (x == maxx) {            /* finished with bitmap row? */
+            x = minx;
+            ++y;
+            dst = (pixel_t *)((uint8_t *)dst + dspan);
+            --height;
         }
-    } else
-        imagebits.ptr8 = font->bits.ptr8 + c * font->bits_width * font->height;
-
-    Rect d;
-    d.x = x;
-    d.y = y;
-    int w = font->width? font->width[c]: font->maxwidth;
-    d.w = w;
-    d.h = font->height;
-    //FIXME add clipping
-
-    /* must clear background as alpha blit won't do it */
-    if (drawbg) {
-        pixel_t save = dp->color;
-        dp->color = bgpixel;
-        /* fill to max width if proportional glyph and console */
-        if (drawbg == 2)
-            w += font->maxwidth - w;
-        draw_fill_rect_fast(dp, x, y, x + w - 1, y + d.h - 1);
-        dp->color = save;
-    }
-    blit_alphabytes(dp, &d, imagebits.ptr8, fgpixel);
+    } while (height > 0);
 }
 
 /* update dirty rectangle in console coordinates */
@@ -819,8 +690,8 @@ static void draw_console_char(Drawable *dp, Font *font, int c, int x, int y,
     pixel_t fg, pixel_t bg, int drawbg)
 {
     if (font->bpp == 8)
-        draw_glyph(dp, font, c, x, y, fg, bg, drawbg);
-    else draw_bitmap_rotate(dp, font, c, x, y, fg, bg, drawbg);
+        draw_glyph(dp, font, c, x, y, fg, bg, drawbg, angle);
+    else draw_bitmap(dp, font, c, x, y, fg, bg, drawbg, angle);
 }
 
 /* draw characters from console text RAM */
@@ -1082,7 +953,7 @@ void draw_vline(Drawable *dp, int x, int y1, int y2)
         if ((unsigned)y1 >= dp->height)
             return;
         *pixel = dp->color;
-		pixel += dp->pitch >> 2;    /* pixels not bytes */
+        pixel += dp->pitch >> 2;    /* pixels not bytes */
     }
 }
 
@@ -1386,7 +1257,8 @@ int main(int ac, char **av)
     if (!(bb = create_pixmap(MWPF_DEFAULT, 800, 400))) exit(2);
     if (!(sdl = sdl_create_window(bb))) exit(3);
     if (!(con = create_console(14, 8))) exit(4);
-    console_load_font(con, "cour_32_tt");
+    //console_load_font(con, "cour_32_tt");
+    console_load_font(con, "cour_32");
     //console_load_font(con, "DOSJ-437.F19");
     if (!(con2 = create_console(14, 8))) exit(4);
     con2->dp = bb;
