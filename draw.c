@@ -429,7 +429,12 @@ void draw_bitmap(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, int 
                     continue;
                 dst = (uint32_t *)(dp->pixels + dy * dp->pitch + dx * dp->bytespp);
             }
-            /* else FIXME add clipping for non-rotated case */
+            else {
+                int dx = sx + x+xoff;
+                int dy = sy + y+yoff;
+                if (dx < 0 || dx >= dp->width || dy < 0 || dy >= dp->height)
+                    continue;
+            }
 
             /* write destination pixel */
             if (word & bitmask)
@@ -522,7 +527,12 @@ void draw_glyph(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, int y
                 dst = (uint32_t *)(dp->pixels + dy * dp->pitch + dx * dp->bytespp);
                 if (!s && sa == 255) sa = 192;  /* experimental oversampled blend */
             }
-            /* else FIXME add clipping for non-rotated case */
+            else {
+                int dx = sx + x+xoff;
+                int dy = sy + y+yoff;
+                if (dx < 0 || dx >= dp->width || dy < 0 || dy >= dp->height)
+                    continue;
+            }
 
             /* blend src alpha with destination */
             if (sa == 0xff) {
@@ -1267,13 +1277,14 @@ int main(int ac, char **av)
     if (!(con2 = create_console(14, 8))) exit(4);
     con2->dp = bb;
     console_load_font(con2, "cour_32");
+    //console_load_font(con2, "cour_32_tt");
     //console_load_font(con2, "DOSJ-437.F19");
 
     for (;;) {
         //Rect update = con->update;          /* save update rect for dup console */
-        draw_console(con, bb, 10*8, 5*15, 1);
+        draw_console(con, bb, 3*8, 5*15, 1);
         //con->update = update;
-        draw_console(con2, bb, 50*8, 5*15, 1);
+        draw_console(con2, bb, 42*8, 5*15, 1);
         if (sdl_nextevent(con, con2))
             break;
         //continue;
