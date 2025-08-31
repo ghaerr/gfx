@@ -1,3 +1,4 @@
+/* GFX library header file */
 #include <stdint.h>
 #include "font.h"
 

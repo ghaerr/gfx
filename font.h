@@ -1,7 +1,4 @@
-/*
- * compiled font descriptor
- */
-
+/* GFX library compiled-in font descriptor */
 #include <stdint.h>
 
 typedef union varptr {            /* used for accessing font bits and offsets */

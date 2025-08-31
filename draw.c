@@ -1,8 +1,7 @@
 /*
- * SDL text and graphics console emulator.
- * For use in validating draw routines for all supported pixel formats.
+ * GFX library graphics routines for host (SDL) and framebuffer (embedded).
  *
- * Currently just displays bitmap glyphs echoed from keypresses.
+ * Currently displays rotated bitmap and alpha blended glyphs echoed from keypresses.
  * Newline will result in scrolling screen.
  *
  * Sep 2022 Greg Haerr <greg@censoft.com>
