@@ -758,10 +758,8 @@ Font *font_load_disk_font(char *path)
     if (width > 8) size *= 2;
 
     fd = open(path, O_RDONLY);
-    if (fd < 0) {
-        printf("Can't open %s\n", path);
+    if (fd < 0)
         return 0;
-    }
     printf("Loading %s %dx%d size %d\n", path, width, height, size);
     font = malloc(sizeof(Font)+size);
     memset(font, 0, sizeof(Font));
@@ -782,10 +780,18 @@ Font *font_load_disk_font(char *path)
 Font *console_load_font(struct console *con, char *path)
 {
     Font *font = NULL;
+    char fontdir[80];
 
     if (path) font = font_load_internal_font(path);
     if (!font) {
-        if (path) font = font_load_disk_font(path);
+        if (path) {
+            font = font_load_disk_font(path);
+            if (!font) {
+                strcpy(fontdir, "fonts/");
+                strcat(fontdir, path);
+                font = font_load_disk_font(fontdir);
+            }
+        }
         if (!font) {
             if (path)
                 printf("Can't find font '%s', using default %s\n", path, fonts[0]->name);
