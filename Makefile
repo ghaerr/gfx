@@ -35,5 +35,11 @@ lucida_32_tt.c: lucida.ttf
 draw: draw.o rom8x16.o $(GENFONTOBJS)
 	$(CC) -o $@ $^ $(LDLIBS)
 
+swarm: swarm.c x11.c draw.c rom8x16.c
+	cc -DNOMAIN -o $@ $^ -lSDL2
+
+xswarm: xswarm.c
+	cc -DNOMAIN -o $@ $^ -lX11
+
 clean:
-	rm -f *.o draw $(GENFONTSRCS)
+	rm -f *.o draw $(GENFONTSRCS) swarm xswarm

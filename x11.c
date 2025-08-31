@@ -1,0 +1,110 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include "draw.h"
+#include "x11.h"
+
+static Drawable *bb;
+static struct sdl_window *sdl;
+
+Display *XOpenDisplay(char *display)
+{
+    if (!sdl_init()) exit(1);
+    if (!(bb = create_pixmap(MWPF_DEFAULT, 640, 400))) exit(2);
+    if (!(sdl = sdl_create_window(bb))) exit(3);
+
+    return bb;
+}
+
+GC XCreateGC(Display *dpy, int d, unsigned long valuemask, XGCValues *values)
+{
+    GC gc = malloc(sizeof(struct gc));
+
+    gc->fg = WhitePixel(dpy, 0);
+    gc->bg = BlackPixel(dpy, 0);
+    return gc;
+}
+
+int XCopyGC(Display *display, GC src, unsigned long valuemask, GC dest)
+{
+    *dest = *src;
+    return 1;
+}
+
+int XSetForeground(Display *dpy, GC gc, unsigned long foreground)
+{
+    gc->fg = foreground;
+    return 1;
+}
+
+int XSetBackground(Display *dpy, GC gc, unsigned long background)
+{
+    gc->bg = background;
+    return 1;
+}
+
+int XDrawSegments(Display * dpy, int d, GC gc, XSegment * segments, int nsegments)
+{
+    int i;
+
+    dpy->color = gc->fg;
+    for (i = 0; i < nsegments; i++) {
+        draw_line(dpy, segments[i].x1, segments[i].y1, segments[i].x2, segments[i].y2);
+    }
+
+    return 1;
+}
+
+int XDrawLine (Display *dpy, int d, GC gc, int x1, int y1, int x2, int y2)
+{
+    if (gc) dpy->color = gc->fg;
+    draw_line(dpy, x1, y1, x2, y2);
+    return 1;
+}
+
+int XFillRectangle(Display *dpy, int d, GC gc, int x, int y, int width, int height)
+{
+    if (gc) dpy->color = gc->fg;
+    draw_fill_rect(dpy, x, y, width, height);
+    return 1;
+}
+
+#include <SDL2/SDL.h>
+int sdl_key(Uint8 state, SDL_Keysym sym);
+
+static int sdl_nextevent(void)
+{
+    int c;
+    SDL_Event event;
+
+    if (SDL_PollEvent(&event)) {
+        switch (event.type) {
+            case SDL_QUIT:
+                return 1;
+
+            case SDL_KEYDOWN:
+                c = sdl_key(event.key.state, event.key.keysym);
+                if (c == 'q') return 1;     //FIXME
+                break;
+        }
+    }
+
+    return 0;
+}
+
+int XSync(Display *dpy, Bool discard)
+{
+    sdl_draw(bb, 0, 0, 0, 0);
+    memset(bb->pixels, 0, bb->size);
+    if (sdl_nextevent())
+        exit(0);
+    return 1;
+}
+
+int mainloop(void)
+{
+    for (;;) {
+        if (sdl_nextevent())
+            break;
+    }
+    return 0;
+}

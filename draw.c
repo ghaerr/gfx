@@ -280,7 +280,7 @@ static SDL_Keycode key_shift(SDL_Keycode kc)
     return kc;
 }
 
-static int sdl_key(Uint8 state, SDL_Keysym sym)
+int sdl_key(Uint8 state, SDL_Keysym sym)
 {
     SDL_Scancode sc = sym.scancode;
     SDL_Keycode kc = sym.sym;
@@ -762,12 +762,14 @@ extern Font font_lucida_32_tt;
 
 static Font *fonts[] = {
     &font_rom8x16,              /* first font is default font */
+#ifndef NOMAIN
     &font_cour_32,
     &font_cour_32_tt,
     &font_times_32,
     &font_times_32_tt,
     &font_lucida_32,
     &font_lucida_32_tt,
+#endif
 };
 
 Font *font_load_internal_font(char *name)
@@ -907,7 +909,7 @@ Drawable *create_pixmap(int pixtype, int width, int height)
     dp->pitch = pitch;
     dp->pixels = (uint8_t *)&dp->data[0];
     dp->size = height * pitch;
-    dp->color = 0x00ffffff;
+    dp->color = 0xffffffff;
     return dp;
 }
 
@@ -1260,6 +1262,7 @@ static int sdl_nextevent(struct console *con, struct console *con2)
     return 0;
 }
 
+#ifndef NOMAIN
 int main(int ac, char **av)
 {
     Drawable *bb;
@@ -1307,3 +1310,4 @@ int main(int ac, char **av)
     free(con);
     free(bb);
 }
+#endif
