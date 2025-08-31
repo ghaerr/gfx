@@ -5,7 +5,8 @@ LDLIBS += -lSDL2
 
 # generated font files
 GENFONTSRCS = fonts/cour_32.c fonts/cour_32_tt.c
-#GENFONTSRCS += fonts/times_32.c fonts/times_32_tt.c
+#GENFONTSRCS += fonts/times_32.c
+GENFONTSRCS += fonts/times_32_tt.c
 #GENFONTSRCS += fonts/lucida_32.c fonts/lucida_32_tt.c
 GENFONTOBJS = $(GENFONTSRCS:.c=.o)
 

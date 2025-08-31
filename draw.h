@@ -36,6 +36,7 @@ typedef struct drawable {
     Pixel fgcolor;          /* foregrond draw color */
     Pixel bgcolor;          /* backgrond draw color */
     void *window;           /* opaque pointer for associated (SDL) window */
+    Font *font;             /* default font for drawable */
     uint8_t *pixels;        /* pixel data, normally points to data[] below */
     Pixel data[];           /* drawable memory allocated in single malloc */
 } Drawable, Texture;

@@ -283,8 +283,8 @@ static int fast_cos(int angle)
 static int angle = 0;
 static int oversamp = 24;           /* min 20 for no holes in diagonal oversampling */
 
-/* draw a character from bitmap font */
-void draw_font_bitmap(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, int yoff,
+/* draw a character from bitmap font, drawbg=2 means fill bg to max width */
+int draw_font_bitmap(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, int yoff,
     Pixel fgpixel, Pixel bgpixel, int drawbg, int rotangle)
 {
     int x, y, minx, maxx, w, zerox, dspan;
@@ -395,10 +395,11 @@ void draw_font_bitmap(Drawable *dp, Font *font, int c, int sx, int sy, int xoff,
             --height;
         }
     } while (height > 0);
+    return w;
 }
 
-/* draw a character from an antialiasing font */
-void draw_font_alpha(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, int yoff,
+/* draw a character from an antialiasing font, drawbg=2 means fill bg to max width */
+int draw_font_alpha(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, int yoff,
     Pixel fgpixel, Pixel bgpixel, int drawbg, int rotangle)
 {
     int x, y, minx, maxx, w, zerox, dspan;
@@ -499,14 +500,28 @@ void draw_font_alpha(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, 
             --height;
         }
     } while (height > 0);
+    return w;
 }
 
-void draw_font_char(Drawable *dp, Font *font, int c, int x, int y, int xoff, int yoff,
-    Pixel fg, Pixel bg, int drawbg)
+int draw_font_char(Drawable *dp, Font *font, int c, int x, int y, int xoff, int yoff,
+    Pixel fg, Pixel bg, int drawbg, int rotangle)
 {
     if (font->bpp == 8)
-        draw_font_alpha(dp, font, c, x, y, xoff, yoff, fg, bg, drawbg, angle);
-    else draw_font_bitmap(dp, font, c, x, y, xoff, yoff, fg, bg, drawbg, angle);
+        return draw_font_alpha(dp, font, c, x, y, xoff, yoff, fg, bg, drawbg, rotangle);
+    return draw_font_bitmap(dp, font, c, x, y, xoff, yoff, fg, bg, drawbg, rotangle);
+}
+
+int draw_font_string(Drawable *dp, Font *font, char *text, int x, int y,
+    int xoff, int yoff, Pixel fg, Pixel bg, int drawbg, int rotangle)
+{
+    int c, adv, xstart = xoff;
+
+    while (*text) {
+        c = *text++;
+        adv = draw_font_char(dp, font, c, x, y, xoff, yoff, fg, bg, drawbg, rotangle);
+        xoff += adv;
+    }
+    return xoff - xstart;
 }
 
 /* update dirty rectangle in console coordinates */
@@ -593,6 +608,15 @@ void draw_clear(Drawable *dp)
     dp->fgcolor = save;
 }
 
+static void clear_screen(Drawable *dp)
+{
+    draw_clear(dp);
+    if (dp->font) {
+        draw_font_string(dp, dp->font, "Use '-' or '=' to rotate text", 20, 20,
+            0, 0, dp->fgcolor, dp->bgcolor, 1, 0);
+    }
+}
+
 /* output character at cursor location*/
 void console_textout(struct console *con, int c, int attr)
 {
@@ -605,7 +629,7 @@ void console_textout(struct console *con, int c, int attr)
     //case '=':   scrollup(con, 0, con->lines-1, ATTR_DEFAULT); return;   //FIXME
     case '-':   angle--;
     same:
-                draw_clear(con->dp);
+                clear_screen(con->dp);
                 update_dirty_region(con, 0, 0, con->cols, con->lines);
                 return;
     case '=':   angle++; goto same;
@@ -672,19 +696,25 @@ static void draw_console_ram(Drawable *dp, struct console *con, int x1, int y1,
             uint16_t chattr = vidram[j];
             color_from_attr(dp, chattr >> 8, &fg, &bg);
             draw_font_char(dp, con->font, chattr & 255, x1, y1,
-                x * con->char_width, y * con->char_height, fg, bg, 2);
+                x * con->char_width, y * con->char_height, fg, bg, 2, angle);
             j++;
         }
     }
 }
 
-/* Called periodically from the main loop */
+/* draw console onto drawable, flush=1 writes update rect to SDL, =2 draw whole console */
 void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 {
     Pixel fg, bg;
 
     con->dp = dp;   // FIXME for testing w/clear_screen()
 
+    if (flush == 2) {
+        con->update.x = 0;
+        con->update.y = 0;
+        con->update.w = con->cols;
+        con->update.h = con->lines;
+    }
     if (con->update.w >= 0 || con->update.h >= 0) {
         /* draw text bitmaps from adaptor RAM */
         draw_console_ram(dp, con, x, y,
@@ -693,9 +723,9 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
         /* draw cursor */
         color_from_attr(dp, ATTR_DEFAULT, &fg, &bg);
         draw_font_char(dp, con->font, '_', x, y,
-            con->curx * con->char_width, con->cury * con->char_height, fg, bg, 0);
+            con->curx * con->char_width, con->cury * con->char_height, fg, bg, 0, angle);
 
-        if (flush) {
+        if (flush == 1) {
             sdl_draw(dp,
                 x + con->update.x * con->char_width,
                 y + con->update.y * con->char_height,
@@ -722,7 +752,7 @@ static Font *fonts[] = {
     &font_cour_32,
     &font_cour_32_tt,
     //&font_times_32,
-    //&font_times_32_tt,
+    &font_times_32_tt,
     //&font_lucida_32,
     //&font_lucida_32_tt,
 #endif
@@ -777,7 +807,8 @@ Font *font_load_disk_font(char *path)
     return font;
 }
 
-Font *console_load_font(struct console *con, char *path)
+/* try loading internal, then disk font. fail returns NULL */
+Font *font_load_font(char *path)
 {
     Font *font = NULL;
     char fontdir[80];
@@ -792,17 +823,25 @@ Font *console_load_font(struct console *con, char *path)
                 font = font_load_disk_font(fontdir);
             }
         }
-        if (!font) {
-            if (path)
-                printf("Can't find font '%s', using default %s\n", path, fonts[0]->name);
-            font = fonts[0];
-        }
     }
+    if (!font) return NULL;
 
     /* older Microwindows MWCFONT struct compatibility */
     if (font->bpp == 0)          font->bpp = 1;          /* mwin default 1 bpp */
     if (font->bits_width == 0)   font->bits_width = 2;   /* mwin default 16 bits */
     if (font->offset_width == 0) font->offset_width = 4; /* mwin default 32 bits */
+
+    return font;
+}
+
+Font *console_load_font(struct console *con, char *path)
+{
+    Font *font = font_load_font(path);
+    if (!font) {
+        if (path)
+            printf("Can't find font '%s', using default %s\n", path, fonts[0]->name);
+        font = fonts[0];
+    }
 
     con->font = font;
     con->char_height = font->height;
@@ -1195,7 +1234,7 @@ static int sdl_nextevent(struct console *con, struct console *con2)
     int c;
     SDL_Event event;
 
-    if (SDL_WaitEvent(&event)) {
+    while (SDL_WaitEvent(&event)) {
         switch (event.type) {
             case SDL_QUIT:
                 return 1;
@@ -1210,7 +1249,7 @@ static int sdl_nextevent(struct console *con, struct console *con2)
                 }
                 console_textout(con, c, ATTR_DEFAULT);
                 console_textout(con2, c, ATTR_DEFAULT);
-                break;
+                return 0;
         }
     }
 
@@ -1222,14 +1261,15 @@ int main(int ac, char **av)
 {
     Drawable *dp;
     struct sdl_window *sdl;
-    struct console *con;
-    struct console *con2;
 
     if (!sdl_init()) exit(1);
     if (!(dp = create_drawable(MWPF_DEFAULT, 640, 400))) exit(2);
     if (!(sdl = sdl_create_window(dp))) exit(3);
 
 #if 1
+    struct console *con;
+    struct console *con2;
+    dp->font = font_load_font("times_32_tt");
     if (!(con = create_console(14, 8))) exit(4);
     console_load_font(con, "cour_32_tt");
     //console_load_font(con, "cour_32");
@@ -1239,12 +1279,16 @@ int main(int ac, char **av)
     console_load_font(con2, "cour_32");
     //console_load_font(con2, "cour_32_tt");
     //console_load_font(con2, "DOSJ-437.F19");
+    clear_screen(dp);
+    draw_flush(dp);
 
     for (;;) {
         //Rect update = con->update;          /* save update rect for dup console */
-        draw_console(con, dp, 3*8, 5*15, 1);
+        int flush = angle? 2: 0;
+        draw_console(con, dp, 3*8, 5*15, flush);
         //con->update = update;
-        draw_console(con2, dp, 42*8, 5*15, 1);
+        draw_console(con2, dp, 42*8, 5*15, flush);
+        draw_flush(dp);
         if (sdl_nextevent(con, con2))
             break;
         //continue;
@@ -1259,7 +1303,6 @@ int main(int ac, char **av)
         //draw_flood_fill(dp, x1, y1);
         //draw_rect(dp, x1, y1, x2, y2);
         //draw_fill_rect(dp, x1, y1, x2, y2);
-        draw_flush(dp);
     }
     free(con);
 #endif
