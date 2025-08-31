@@ -569,10 +569,28 @@ void console_movecursor(struct console *con, int x, int y)
     update_dirty_region(con, x, y, 1, 1);
 }
 
-static void clear_screen(Drawable *dp, struct console *con)
+/* draw horizontal line inclusive of (x1, x2) w/clipping */
+void draw_hline(Drawable *dp, int x1, int x2, int y)
 {
-    memset(dp->pixels, 0, dp->size);
-    update_dirty_region(con, 0, 0, con->cols, con->lines);
+    if ((unsigned)y >= dp->height)
+        return;
+
+    Pixel *pixel = (Pixel *)(dp->pixels + y * dp->pitch + x1 * dp->bytespp);
+    while (x1++ <= x2) {
+        if ((unsigned)x1 >= dp->width)
+            return;
+        *pixel++ = dp->fgcolor;
+    }
+}
+
+void draw_clear(Drawable *dp)
+{
+    Pixel save = dp->fgcolor;
+
+    dp->fgcolor = dp->bgcolor;
+    for (int y = 0; y < dp->height; y++)
+        draw_hline(dp, 0, dp->width - 1, y);
+    dp->fgcolor = save;
 }
 
 /* output character at cursor location*/
@@ -585,14 +603,17 @@ void console_textout(struct console *con, int c, int attr)
     case '\n':  goto scroll;
     //case '-':   scrolldn(con, 0, con->lines-1, ATTR_DEFAULT); return;   //FIXME
     //case '=':   scrollup(con, 0, con->lines-1, ATTR_DEFAULT); return;   //FIXME
-    case '-':   angle--; clear_screen(con->dp, con); return;
-    case '=':   angle++; clear_screen(con->dp, con); return;
-    case ':':   if (--oversamp <= 0) oversamp = 1; clear_screen(con->dp, con);
-                printf("%d\n", oversamp);
+    case '-':   angle--;
+    same:
+                draw_clear(con->dp);
+                update_dirty_region(con, 0, 0, con->cols, con->lines);
                 return;
-    case ';':   ++oversamp;                        clear_screen(con->dp, con);
-                printf("%d\n", oversamp);
-                return;
+    case '=':   angle++; goto same;
+    case ':':   if (--oversamp <= 0) oversamp = 1;
+    same2:      printf("%d\n", oversamp);
+                goto same;
+    case ';':   ++oversamp;
+                goto same2;
     }
 
     con->text_ram[con->cury * con->cols + con->curx] = (c & 255) | ((attr & 255) << 8);
@@ -812,7 +833,7 @@ struct console *create_console(int width, int height)
     return con;
 }
 
-Drawable *create_pixmap(int pixtype, int width, int height)
+Drawable *create_drawable(int pixtype, int width, int height)
 {
     Drawable *dp;
     int bpp, pitch, size;
@@ -844,7 +865,9 @@ Drawable *create_pixmap(int pixtype, int width, int height)
     dp->pitch = pitch;
     dp->pixels = (uint8_t *)&dp->data[0];
     dp->size = height * pitch;
-    dp->color = 0xffffffff;
+    dp->fgcolor = RGB(255,255,255);
+    dp->bgcolor = RGB(0, 0, 255);
+    draw_clear(dp);
     return dp;
 }
 
@@ -855,7 +878,7 @@ void draw_point(Drawable *dp, int x, int y)
 
     if ((unsigned)x < dp->width && (unsigned)y < dp->height) {
         pixel = (Pixel *)(dp->pixels + y * dp->pitch + x * dp->bytespp);
-        *pixel = dp->color;
+        *pixel = dp->fgcolor;
     }
 }
 
@@ -870,20 +893,6 @@ Pixel read_pixel(Drawable *dp, int x, int y)
     return 0;
 }
 
-/* draw horizontal line inclusive of (x1, x2) w/clipping */
-void draw_hline(Drawable *dp, int x1, int x2, int y)
-{
-    if ((unsigned)y >= dp->height)
-        return;
-
-    Pixel *pixel = (Pixel *)(dp->pixels + y * dp->pitch + x1 * dp->bytespp);
-    while (x1++ <= x2) {
-        if ((unsigned)x1 >= dp->width)
-            return;
-        *pixel++ = dp->color;
-    }
-}
-
 /* draw vertical line inclusive of (y1, y2) w/clipping */
 void draw_vline(Drawable *dp, int x, int y1, int y2)
 {
@@ -894,7 +903,7 @@ void draw_vline(Drawable *dp, int x, int y1, int y2)
     while (y1++ <= y2) {
         if ((unsigned)y1 >= dp->height)
             return;
-        *pixel = dp->color;
+        *pixel = dp->fgcolor;
         pixel += dp->pitch >> 2;    /* pixels not bytes */
     }
 }
@@ -1093,7 +1102,7 @@ void draw_flood_fill(Drawable *dp, int x, int y)
     int stackTop = -1;
     Pixel orgColor = read_pixel(dp, x, y);
 
-    if (dp->color == orgColor)
+    if (dp->fgcolor == orgColor)
         return;
 
     /* Push the first element */
@@ -1170,6 +1179,11 @@ void draw_flood_fill(Drawable *dp, int x, int y)
 }
 /* end flood fill code */
 
+void draw_flush(Drawable *dp)
+{
+    sdl_draw(dp, 0, 0, 0, 0);
+}
+
 static int sdl_nextevent(struct console *con, struct console *con2)
 {
     int c;
@@ -1200,29 +1214,31 @@ static int sdl_nextevent(struct console *con, struct console *con2)
 #ifndef NOMAIN
 int main(int ac, char **av)
 {
-    Drawable *bb;
+    Drawable *dp;
     struct sdl_window *sdl;
     struct console *con;
     struct console *con2;
 
     if (!sdl_init()) exit(1);
-    if (!(bb = create_pixmap(MWPF_DEFAULT, 640, 400))) exit(2);
-    if (!(sdl = sdl_create_window(bb))) exit(3);
+    if (!(dp = create_drawable(MWPF_DEFAULT, 640, 400))) exit(2);
+    if (!(sdl = sdl_create_window(dp))) exit(3);
+
+#if 1
     if (!(con = create_console(14, 8))) exit(4);
     console_load_font(con, "cour_32_tt");
     //console_load_font(con, "cour_32");
     //console_load_font(con, "DOSJ-437.F19");
     if (!(con2 = create_console(14, 8))) exit(4);
-    con2->dp = bb;
+    con2->dp = dp;
     console_load_font(con2, "cour_32");
     //console_load_font(con2, "cour_32_tt");
     //console_load_font(con2, "DOSJ-437.F19");
 
     for (;;) {
         //Rect update = con->update;          /* save update rect for dup console */
-        draw_console(con, bb, 3*8, 5*15, 1);
+        draw_console(con, dp, 3*8, 5*15, 1);
         //con->update = update;
-        draw_console(con2, bb, 42*8, 5*15, 1);
+        draw_console(con2, dp, 42*8, 5*15, 1);
         if (sdl_nextevent(con, con2))
             break;
         //continue;
@@ -1231,18 +1247,19 @@ int main(int ac, char **av)
         //int y1 = random() % 400;
         //int y2 = random() % 400;
         //int r = random() % 40;
-        //draw_line(bb, x1, y1, x2, y2);
-        //draw_thick_line(bb, x1, y1, x2, y2, 6);
-        //draw_circle(bb, x1, y1, r);
-        //draw_flood_fill(bb, x1, y1);
-        //draw_rect(bb, x1, y1, x2, y2);
-        //draw_fill_rect(bb, x1, y1, x2, y2);
-        sdl_draw(bb, 0, 0, 0, 0);
+        //draw_line(dp, x1, y1, x2, y2);
+        //draw_thick_line(dp, x1, y1, x2, y2, 6);
+        //draw_circle(dp, x1, y1, r);
+        //draw_flood_fill(dp, x1, y1);
+        //draw_rect(dp, x1, y1, x2, y2);
+        //draw_fill_rect(dp, x1, y1, x2, y2);
+        draw_flush(dp);
     }
+    free(con);
+#endif
 
     SDL_Quit();
     free(sdl);
-    free(con);
-    free(bb);
+    free(dp);
 }
 #endif

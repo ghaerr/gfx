@@ -3,9 +3,11 @@
 #include "font.h"
 
 /* supported internal framebuffer pixel formats */
-#define MWPF_DEFAULT       MWPF_TRUECOLORARGB
-#define MWPF_TRUECOLORARGB 0    /* 32bpp, memory byte order B, G, R, A */
-#define MWPF_TRUECOLORABGR 1    /* 32bpp, memory byte order R, G, B, A */
+#define MWPF_DEFAULT        MWPF_TRUECOLORARGB
+#define RGB(r,g,b)          RGB2PIXELARGB(r,g,b)
+
+#define MWPF_TRUECOLORARGB  0   /* 32bpp, memory byte order B, G, R, A */
+#define MWPF_TRUECOLORABGR  1   /* 32bpp, memory byte order R, G, B, A */
 
 typedef uint32_t Pixel;     /* internal pixel format (ARGB or ABGR) */
 typedef uint8_t Alpha;      /* size of alpha channel components */
@@ -30,9 +32,10 @@ typedef struct drawable {
     int width;              /* width in pixels */
     int height;             /* height in pixels */
     int pitch;              /* stride in bytes, offset to next pixel row */
-    Pixel color;            /* rgb color for glyph blit mode */
-    void *window;           /* opaque pointer for associated window */
     int32_t size;           /* total size in bytes */
+    Pixel fgcolor;          /* foregrond draw color */
+    Pixel bgcolor;          /* backgrond draw color */
+    void *window;           /* opaque pointer for associated (SDL) window */
     uint8_t *pixels;        /* pixel data, normally points to data[] below */
     Pixel data[];           /* drawable memory allocated in single malloc */
 } Drawable, Texture;
@@ -62,14 +65,14 @@ struct console {
 #define RGB2PIXELABGR(r,g,b)    \
     (0xFF000000UL | ((b) << 16) | ((g) << 8) | (r))
 
-#define RGB     RGB2PIXELARGB
-
 struct sdl_window;
 
 int sdl_init(void);
 struct sdl_window *sdl_create_window(Drawable *dp);
 void sdl_draw(Drawable *dp, int x, int y, int width, int height);
 
-Drawable *create_pixmap(int pixtype, int width, int height);
+Drawable *create_drawable(int pixtype, int width, int height);
+void draw_clear(Drawable *dp);
+void draw_flush(Drawable *dp);
 void draw_line(Drawable *dp, int x1, int y1, int x2, int y2);
 void draw_fill_rect(Drawable *dp, int x1, int y1, int x2, int y2);

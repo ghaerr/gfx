@@ -6,14 +6,14 @@
 
 Display *XOpenDisplay(char *display)
 {
-    Drawable *bb;
+    Drawable *dp;
     struct sdl_window *sdl;
 
     if (!sdl_init()) exit(1);
-    if (!(bb = create_pixmap(MWPF_DEFAULT, 640, 400))) exit(2);
-    if (!(sdl = sdl_create_window(bb))) exit(3);
+    if (!(dp = create_drawable(MWPF_DEFAULT, 640, 400))) exit(2);
+    if (!(sdl = sdl_create_window(dp))) exit(3);
 
-    return bb;
+    return dp;
 }
 
 GC XCreateGC(Display *dpy, int d, unsigned long valuemask, XGCValues *values)
@@ -47,7 +47,7 @@ int XDrawSegments(Display *dpy, int d, GC gc, XSegment *segments, int nsegments)
 {
     int i;
 
-    dpy->color = gc->fg;
+    dpy->fgcolor = gc->fg;
     for (i = 0; i < nsegments; i++)
         draw_line(dpy, segments[i].x1, segments[i].y1, segments[i].x2, segments[i].y2);
 
@@ -56,14 +56,14 @@ int XDrawSegments(Display *dpy, int d, GC gc, XSegment *segments, int nsegments)
 
 int XDrawLine (Display *dpy, int d, GC gc, int x1, int y1, int x2, int y2)
 {
-    dpy->color = gc->fg;
+    dpy->fgcolor = gc->fg;
     draw_line(dpy, x1, y1, x2, y2);
     return 1;
 }
 
 int XFillRectangle(Display *dpy, int d, GC gc, int x, int y, int width, int height)
 {
-    dpy->color = gc->fg;
+    dpy->fgcolor = gc->fg;
     draw_fill_rect(dpy, x, y, width, height);
     return 1;
 }
@@ -93,8 +93,8 @@ static int sdl_pollevent(void)
 
 int XSync(Display *dpy, Bool discard)
 {
-    sdl_draw(dpy, 0, 0, 0, 0);
-    memset(dpy->pixels, 0, dpy->size);
+    draw_flush(dpy);
+    draw_clear(dpy);
     if (sdl_pollevent())
         exit(0);
     return 1;

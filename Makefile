@@ -8,7 +8,9 @@ GENFONTSRCS = cour_32.c cour_32_tt.c
 #GENFONTSRCS += times_32.c times_32_tt.c lucida_32.c lucida_32_tt.c
 GENFONTOBJS = $(GENFONTSRCS:.c=.o)
 
-all: draw
+gfx: draw
+
+all: gfx swarm
 
 %.o: %.ttf
 	python3 writefont.py $*.ttf 32 -bpp 1 -c 0x20-0x7e > $*.c
