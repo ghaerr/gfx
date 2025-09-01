@@ -370,8 +370,6 @@ static Bool InitializeAll(struct state *st)
   int n,i;
   double rspeed;
 
-  st->cosilines = True;
-
   //XGetWindowAttributes(st->dpy,st->win[0],&xgwa);
   //cmap=xgwa.colormap;
 /*  xswa.backing_store=Always;
@@ -558,17 +556,16 @@ void ya_rand_init(int);
 
 int main(int ac, char **av)
 {
-    Display *dpy = XOpenDisplay("unix:0");
-    Window win = dpy;
+    Display *dpy = XOpenDisplay2("unix:0", 800, 800);
 
 #undef ya_rand_init
     ya_rand_init(0);
 
+    Window win = dpy;
     void *st = kumppa_init(dpy, win);
     kumppa_reshape(dpy, win, st, dpy->width, dpy->height);
     for (;;) {
-        unsigned long wait = 33333;  /* 30 fps */
-        wait = kumppa_draw(dpy, win, st);
+        unsigned long wait = kumppa_draw(dpy, win, st);
         XSync(dpy, 0);
         usleep(wait);
     }

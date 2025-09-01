@@ -1,4 +1,4 @@
-/* quick X11 to GFX conversions */
+/* quick X11 to GFX for screensaver demos */
 #include <stdint.h>
 
 #define Display     Drawable    /* references GFX Drawable, can't use X11 Drawable */
@@ -6,22 +6,22 @@ typedef int         Bool;
 typedef Drawable *  Window;
 typedef int         Colormap;
 
-#define True                    1
-#define False                   0
-#define DefaultScreen(d)        0
 #define RootWindow(d,s)         d
+#define DisplayWidth(d,s)       d->width
+#define DisplayHeight(d,s)      d->height
+#define DefaultScreen(d)        0
 #define XDefaultColormap(d,s)   0
 #define WhitePixel(d,s)         RGB(255,255,255)
 #define BlackPixel(d,s)         RGB(0,0,0)
-#define DisplayWidth(d,s)       d->width
-#define DisplayHeight(d,s)      d->height
 #define GCForeground            1
 #define GCbackground            2
 #define GCLineWidth             4
 #define GCFunction              8
-#define DoRed                   0
-#define DoGreen                 0
-#define DoBlue                  0
+#define DoRed                   1
+#define DoGreen                 2
+#define DoBlue                  4
+#define True                    1
+#define False                   0
 
 typedef struct xcolor {
     int red, green, blue;
@@ -46,7 +46,7 @@ typedef struct xsegment {
     int y1, y2;
 } XSegment;
 
-Display *XOpenDisplay(char *display);
+Display *XOpenDisplay2(char *display, int width, int height);
 #define XDestroyWindow(d,s)
 int XSync(Display *dpy, Bool discard);
 

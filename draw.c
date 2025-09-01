@@ -1237,6 +1237,18 @@ static int overlap(int src_x, int src_y, int dst_x, int dst_y, int width, int he
     int dx2 = dst_x + width;
     int dy2 = dst_y + height;
 
+    /*
+     * The rectangles don't overlap if
+     * one rectangle's minimum in some dimension
+     * is greater than the other's maximum in
+     * that dimension.
+     *
+     * bool noOverlap = r1.x1 > r2.x2 ||
+     *                  r2.x1 > r1.x2 ||
+     *                  r1.y1 > r2.y2 ||
+     *                  r2.y1 > r1.y2;
+     * Here, we use >= since x2,y2 is lower right + 1,1 adding width/height.
+     */
   //int no_over = (src_x >= dx2 || sx2 <= dst_x || src_y >= dy2 || sy2 <= dst_y);
     int over =    (src_x < dx2  && sx2 > dst_x  && src_y < dy2  && sy2 > dst_y);
 

@@ -33,23 +33,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
-/* X Includes */
+#include <stdio.h>
 //#include <X11/Xlib.h>
 //#include <X11/Xatom.h>
 //#include <X11/Xutil.h>
-
-/* This makes it work with virtual root window managers. */
 //#include "vroot.h"
-
-/* Standard Includes */
-#include <stdio.h>
-
-/* For those of you who want to know what version you are using. */
-#include "patchlevel.h"
-
-/* Includes for this project. */
 #include "swarm.h"
+
+#define VERSION		"2.1"
 
 void Bounce_Against_Windows();
 void HandleEvent();
@@ -261,7 +252,7 @@ char    **geometry;
     }
 
     /* Open the display. */
-    if (!(display.dpy = XOpenDisplay(display.dname)))
+    if (!(display.dpy = XOpenDisplay2(display.dname, WINWIDTH, WINHEIGHT)))
     {
         //HandleError("Cannot open display.\n");
         exit(-1);
@@ -594,6 +585,7 @@ char    *geometry;
 #endif
 
     display.win = display.root;
+    display.bg = RGB(0, 0, 255);
 
     /* Set up the bees' graphics context. */ 
     display.bee_gc = XCreateGC(display.dpy, display.win, 0, NULL); 

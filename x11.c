@@ -1,4 +1,4 @@
-/* quick X11 to GFX conversions */
+/* quick X11 to GFX functions for screenaver demos */
 #include <stdlib.h>
 #include <stdio.h>
 #include "draw.h"
@@ -6,14 +6,13 @@
 
 void ya_rand_init(int);
 
-Display *XOpenDisplay(char *display)
+Display *XOpenDisplay2(char *display, int width, int height)
 {
     Drawable *dp;
     struct sdl_window *sdl;
 
     if (!sdl_init()) exit(1);
-    //if (!(dp = create_drawable(MWPF_DEFAULT, 640, 400))) exit(2);
-    if (!(dp = create_drawable(MWPF_DEFAULT, 800, 800))) exit(2);
+    if (!(dp = create_drawable(MWPF_DEFAULT, width, height))) exit(2);
     if (!(sdl = sdl_create_window(dp))) exit(3);
 
     return dp;
@@ -120,7 +119,6 @@ static int sdl_pollevent(void)
 int XSync(Display *dpy, Bool discard)
 {
     draw_flush(dpy);
-    //draw_clear(dpy);
     if (sdl_pollevent())
         exit(0);
     return 1;
