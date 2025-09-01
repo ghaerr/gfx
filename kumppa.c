@@ -38,12 +38,22 @@ from the X Consortium.
 */
 
 #include <math.h>
-#include "screenhack.h"
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdio.h>
+#include "yarandom.h"
+#include "draw.h"
+#include "x11.h"
 
 #ifdef HAVE_DOUBLE_BUFFER_EXTENSION
 # include "xdbe.h"
 #endif /* HAVE_DOUBLE_BUFFER_EXTENSION */
 
+#define countof(x) (sizeof((x))/sizeof((*x)))
+
+int mono_p = 0;
+
+#if UNUSED
 static const char *kumppa_defaults [] ={
   ".background:		black",
 /*  ".lowrez:		true", */
@@ -68,6 +78,7 @@ static XrmOptionDescRec kumppa_options [] = {
   {"-no-db",    ".useDBE",  XrmoptionNoArg, "False" },
   {0,0,0,0}
 };
+#endif
 
 static const unsigned char colors[96]=
   {0,0,255, 0,51,255, 0,102,255, 0,153,255, 0,204,255,
@@ -352,7 +363,7 @@ static Bool make_rots(struct state *st, double xspeed,double yspeed)
 static Bool InitializeAll(struct state *st)
 {
   XGCValues xgcv;
-  XWindowAttributes xgwa;
+  //XWindowAttributes xgwa;
 /*  XSetWindowAttributes xswa;*/
   Colormap cmap;
   XColor color;
@@ -361,17 +372,17 @@ static Bool InitializeAll(struct state *st)
 
   st->cosilines = True;
 
-  XGetWindowAttributes(st->dpy,st->win[0],&xgwa);
-  cmap=xgwa.colormap;
+  //XGetWindowAttributes(st->dpy,st->win[0],&xgwa);
+  //cmap=xgwa.colormap;
 /*  xswa.backing_store=Always;
   XChangeWindowAttributes(st->dpy,st->win[0],CWBackingStore,&xswa);*/
-  xgcv.function=GXcopy;
+  //xgcv.function=GXcopy;
 
   st->pscale = 1;
-  if (xgwa.width > 2560 || xgwa.height > 2560)
-    st->pscale *= 3;  /* Retina displays */
+  //if (xgwa.width > 2560 || xgwa.height > 2560)
+    //st->pscale *= 3;  /* Retina displays */
 
-  xgcv.foreground=get_pixel_resource (st->dpy, cmap, "background", "Background");
+  xgcv.foreground=RGB(0,0,0); //get_pixel_resource (st->dpy, cmap, "background", "Background");
   xgcv.line_width = st->pscale;
   st->fgc[32]=XCreateGC(st->dpy,st->win[0],GCForeground|GCFunction|GCLineWidth,&xgcv);
 
@@ -379,7 +390,7 @@ static Bool InitializeAll(struct state *st)
   if (mono_p)
     {
       st->fgc[0]=st->fgc[32];
-      xgcv.foreground=get_pixel_resource (st->dpy, cmap, "foreground", "Foreground");
+      xgcv.foreground=RGB(255,255,255); //get_pixel_resource (st->dpy, cmap, "foreground", "Foreground");
       st->fgc[1]=XCreateGC(st->dpy,st->win[0],GCForeground|GCFunction|GCLineWidth,&xgcv);
       for (i=0;i<32;i+=2) st->fgc[i]=st->fgc[0];
       for (i=1;i<32;i+=2) st->fgc[i]=st->fgc[1];
@@ -395,7 +406,7 @@ static Bool InitializeAll(struct state *st)
         st->fgc[i]=XCreateGC(st->dpy,st->win[0],GCForeground|GCFunction|GCLineWidth,&xgcv);
       }
   st->cgc=XCreateGC(st->dpy,st->win[0],GCForeground|GCFunction|GCLineWidth,&xgcv);
-  XSetGraphicsExposures(st->dpy,st->cgc,False);
+  //XSetGraphicsExposures(st->dpy,st->cgc,False);
 
   st->cosilines = 1; //get_boolean_resource(st->dpy, "random","Boolean");
 
@@ -410,7 +421,7 @@ static Bool InitializeAll(struct state *st)
     }
 #endif /* HAVE_DOUBLE_BUFFER_EXTENSION */
 
-  st->delay=10000; //get_integer_resource(st->dpy, "delay","Integer");
+  st->delay=20000; //get_integer_resource(st->dpy, "delay","Integer");
   rspeed=0.1; //get_float_resource(st->dpy, "speed","Float");
   if (rspeed<0.0001 || rspeed>0.2)
     {
@@ -418,8 +429,8 @@ static Bool InitializeAll(struct state *st)
       rspeed=0.1;
     }
 
-  st->sizx=xgwa.width;
-  st->sizy=xgwa.height;
+  st->sizx=st->dpy->width; //xgwa.width;
+  st->sizy=st->dpy->height; //xgwa.height;
   st->midx=st->sizx>>1;
   st->midy=st->sizy>>1;
   st->stateX=0;
@@ -494,8 +505,8 @@ kumppa_draw (Display *d, Window w, void *closure)
                        2*st->pscale,2*st->pscale);
       }
   }
-  XFillRectangle(st->dpy,st->win[0],st->fgc[32],st->midx-2,st->midy-2,
-                 4*st->pscale,4*st->pscale);
+  //XFillRectangle(st->dpy,st->win[0],st->fgc[32],st->midx-2,st->midy-2,
+                 //4*st->pscale,4*st->pscale);
   rotate(st);
 #ifdef HAVE_DOUBLE_BUFFER_EXTENSION
   if (st->usedouble) XdbeSwapBuffers(st->dpy,&st->xdswp,1);
@@ -518,11 +529,11 @@ kumppa_reshape (Display *dpy, Window window, void *closure,
   st->stateY=0;
 }
 
-static Bool
-kumppa_event (Display *dpy, Window window, void *closure, XEvent *event)
-{
-  return False;
-}
+//static Bool
+//kumppa_event (Display *dpy, Window window, void *closure, XEvent *event)
+//{
+  //return False;
+//}
 
 static void
 kumppa_free (Display *dpy, Window window, void *closure)
@@ -541,4 +552,24 @@ kumppa_free (Display *dpy, Window window, void *closure)
   free (st);
 }
 
-XSCREENSAVER_MODULE ("Kumppa", kumppa)
+//XSCREENSAVER_MODULE ("Kumppa", kumppa)
+
+void ya_rand_init(int);
+
+int main(int ac, char **av)
+{
+    Display *dpy = XOpenDisplay("unix:0");
+    Window win = dpy;
+
+#undef ya_rand_init
+    ya_rand_init(0);
+
+    void *st = kumppa_init(dpy, win);
+    kumppa_reshape(dpy, win, st, dpy->width, dpy->height);
+    for (;;) {
+        unsigned long wait = 33333;  /* 30 fps */
+        wait = kumppa_draw(dpy, win, st);
+        XSync(dpy, 0);
+        usleep(wait);
+    }
+}

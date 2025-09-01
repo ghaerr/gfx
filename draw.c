@@ -1229,6 +1229,179 @@ void draw_flush(Drawable *dp)
     sdl_draw(dp, 0, 0, 0, 0);
 }
 
+#if UNUSED
+void draw_blit(Drawable *td, int dst_x, int dst_y, int width, int height,
+    Drawable *ts, int src_x, int src_y)
+{
+    int sx2 = src_x + width - 1;
+    int sy2 = src_y + height - 1;
+    int dx2 = dst_x + width - 1;
+    int dy2 = dst_y + height - 1;
+    int intersect =
+        (src_x < dx2 && sx2 > dst_x &&
+         src_y < dy2 && sy2 > dst_y);
+
+    if (intersect) printf("INT\n");
+    int span = width * td->bytespp;
+    int dspan = td->pitch - span;
+    int sspan = ts->pitch - span;
+    int y = height;
+    Pixel *src, *dst;
+    if (1) {
+        dst = (Pixel *)(td->pixels + dy2 * td->pitch + dx2 * td->bytespp);
+        src = (Pixel *)(ts->pixels + sy2 * ts->pitch + sx2 * ts->bytespp);
+        do {
+            int x = width;
+            do {
+                *--dst = *--src;
+            } while (--x > 0);
+            dst = (Pixel *)((uint8_t *)dst - dspan);
+            src = (Pixel *)((uint8_t *)src - sspan);
+        } while (--y > 0);
+    } else {
+        dst = (Pixel *)(td->pixels + dst_y * td->pitch + dst_x * td->bytespp);
+        src = (Pixel *)(ts->pixels + src_y * ts->pitch + src_x * ts->bytespp);
+        do {
+            int x = width;
+            do {
+                *dst++ = *src++;
+            } while (--x > 0);
+            dst = (Pixel *)((uint8_t *)dst + dspan);
+            src = (Pixel *)((uint8_t *)src + sspan);
+        } while (--y > 0);
+    }
+}
+#endif
+
+void draw_blit(Drawable *td, int dst_x, int dst_y, int width, int height,
+    Drawable *ts, int src_x, int src_y)
+{
+    //printf("A   w/h %d,%d src %d,%d dst %d,%d max src %d,%d dst %d,%d\n", width, height,
+        //src_x, src_y, dst_x, dst_y, ts->width, ts->height, td->width, td->height);
+
+#if 1
+    /* clip src to source Drawable */
+    if (src_x < 0)
+    {
+        width += src_x;
+        dst_x -= src_x;
+        src_x = 0;
+    }
+    if (src_y < 0)
+    {
+        height += src_y;
+        dst_y -= src_y;
+        src_y = 0;
+    }
+    if (src_x + width > ts->width)
+        width = ts->width - src_x;
+    if (src_y + height > ts->height)
+        height = ts->height - src_y;
+#endif
+#if 0
+    /* clip dst to destination Drawable */
+    if (dst_x < 0)
+    {
+        width += dst_x;
+        src_x -= dst_x;
+        dst_x = 0;
+    }
+    if (dst_y < 0)
+    {
+        height += dst_y;
+        src_y -= dst_y;
+        dst_y = 0;
+    }
+//#define WIDTH   td->width
+//#define HEIGHT  td->height
+#define MAXW    400
+#define MAXH    400
+    if (dst_x + width > MAXW)
+        width = MAXW - dst_x;
+    if (dst_y + height > MAXH)
+        height = MAXH - dst_y;
+#endif
+#if 1
+    /* clip dst to destination Drawable */
+    int rx1 = 0;
+    int ry1 = 0;
+    int rx2 = td->width;
+    int ry2 = td->height;
+
+    //rx1 = 200;
+    //ry1 = 200;
+    //rx2 = 599;
+    //ry2 = 599;
+
+    rx1 = MAX(rx1, dst_x);
+    ry1 = MAX(ry1, dst_y);
+    rx2 = MIN(rx2, dst_x + width);
+    ry2 = MIN(ry2, dst_y + height);
+    int rw = rx2 - rx1;
+    int rh = ry2 - ry1;
+    if (rw <= 0 || rh <= 0)
+        return;
+
+    dst_x = rx1;
+    dst_y = ry1;
+    width = rw;
+    height = rh;
+    src_x = src_x + rx1 - dst_x;
+    src_y = src_y + ry1 - dst_y;
+#endif
+#if 1
+    //printf("B   w/h %d,%d src %d,%d dst %d,%d max src %d,%d dst %d,%d\n", width, height,
+        //src_x, src_y, dst_x, dst_y, ts->width, ts->height, td->width, td->height);
+    if (src_x < 0) { printf("1\n"); exit(1); }
+    if (src_y < 0) { printf("2\n"); exit(1); }
+    if (src_x + width > ts->width) { printf("3\n"); exit(1); }
+    if (dst_x + width > td->width) { printf("4\n"); exit(1); }
+    if (src_y + height > ts->height) { printf("5\n"); exit(1); }
+    if (dst_y + height > td->height) { printf("6\n"); exit(1); }
+#endif
+    int ssz = ts->bytespp;
+    int dsz = td->bytespp;
+    int src_pitch = ts->pitch;
+    int dst_pitch = td->pitch;
+    uint8_t *src = ts->pixels + src_y * src_pitch + src_x * ssz;
+    uint8_t *dst = td->pixels + dst_y * dst_pitch + dst_x * dsz;
+
+    /* check for backwards copy if dst in src rect */
+    if (ts->pixels == td->pixels)
+    {
+        if (src_y < dst_y)
+        {
+            /* copy from bottom upwards*/
+            src += (height - 1) * ts->pitch;
+            dst += (height - 1) * td->pitch;
+            src_pitch = -src_pitch;
+            dst_pitch = -dst_pitch;
+        }
+        if (src_x < dst_x)
+        {
+            /* copy from right to left*/
+            src += (width - 1) * ts->bytespp;
+            dst += (width - 1) * td->bytespp;
+            ssz = -ssz;
+            dsz = -dsz;
+        }
+    }
+    while (--height >= 0)
+    {
+        register unsigned char *d = dst;
+        register unsigned char *s = src;
+        int w = width;
+
+        while (--w >= 0)
+        {
+            *(Pixel *)d = *(Pixel *)s;
+            d += dsz;
+            s += ssz;
+        }
+        src += src_pitch;
+        dst += dst_pitch;
+    }
+}
 static int sdl_nextevent(struct console *con, struct console *con2)
 {
     int c;

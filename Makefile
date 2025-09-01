@@ -12,7 +12,7 @@ GENFONTOBJS = $(GENFONTSRCS:.c=.o)
 
 gfx: draw
 
-all: gfx swarm
+all: gfx swarm kumppa
 
 %.o: %.ttf
 	python3 writefont.py $*.ttf 32 -bpp 1 -c 0x20-0x7e > $*.c
@@ -49,11 +49,11 @@ draw: draw.o rom8x16.o $(GENFONTOBJS)
 swarm: swarm.c x11.c draw.c rom8x16.c
 	cc -DNOMAIN -o $@ $^ -lSDL2
 
-kumppa: kumppa.c x11.c draw.c rom8x16.c
+kumppa: kumppa.c yarandom.c x11.c draw.c rom8x16.c
 	cc -DNOMAIN -o $@ $^ -lSDL2
 
 xswarm: xswarm.c
 	cc -DNOMAIN -o $@ $^ -lX11
 
 clean:
-	rm -f *.o fonts/*.o draw $(GENFONTSRCS) swarm xswarm
+	rm -f *.o fonts/*.o draw $(GENFONTSRCS) swarm xswarm kumppa

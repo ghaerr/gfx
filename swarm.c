@@ -592,6 +592,9 @@ char    *geometry;
                         KeyPressMask | ButtonPressMask | StructureNotifyMask);
 
 #endif
+
+    display.win = display.root;
+
     /* Set up the bees' graphics context. */ 
     display.bee_gc = XCreateGC(display.dpy, display.win, 0, NULL); 
     XSetForeground(display.dpy, display.bee_gc, display.bee); 
