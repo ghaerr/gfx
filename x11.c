@@ -90,8 +90,6 @@ int XFillRectangle(Display *dpy, Window d, GC gc, int x, int y, int width, int h
 int XCopyArea(Display *dpy, Window src, Window dest, GC gc,
     int src_x, int src_y, int width, int height, int dest_x, int dest_y)
 {
-    //printf("w/h %d,%d src %d,%d dst %d,%d\n", width, height,
-        //src_x, src_y, dest_x, dest_y);
     draw_blit(dest, dest_x, dest_y, width, height, src, src_x, src_y);
     return 1;
 }

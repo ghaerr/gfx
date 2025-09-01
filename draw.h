@@ -79,3 +79,5 @@ void draw_line(Drawable *dp, int x1, int y1, int x2, int y2);
 void draw_fill_rect(Drawable *dp, int x1, int y1, int x2, int y2);
 void draw_blit(Drawable *dst, int dst_x, int dst_y, int width, int height,
                Drawable *src, int src_x, int src_y);
+void draw_blit_fast(Drawable *dst, int dst_x, int dst_y, int width, int height,
+               Drawable *src, int src_x, int src_y);

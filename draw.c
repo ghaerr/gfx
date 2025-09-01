@@ -1230,56 +1230,52 @@ void draw_flush(Drawable *dp)
 }
 
 #if UNUSED
-void draw_blit(Drawable *td, int dst_x, int dst_y, int width, int height,
+static int overlap(int src_x, int src_y, int dst_x, int dst_y, int width, int height)
+{
+    int sx2 = src_x + width;
+    int sy2 = src_y + height;
+    int dx2 = dst_x + width;
+    int dy2 = dst_y + height;
+
+  //int no_over = (src_x >= dx2 || sx2 <= dst_x || src_y >= dy2 || sy2 <= dst_y);
+    int over =    (src_x < dx2  && sx2 > dst_x  && src_y < dy2  && sy2 > dst_y);
+
+    if (over) {
+        printf("Overlap t/l %d,%d %d,%d  b/r %d,%d %d,%d\n",
+            src_x, src_y, dst_x, dst_y, sx2, sy2, dx2, dy2);
+    }
+    return over;
+}
+
+/* fast copy blit, no clipping or overlap handling */
+void draw_blit_fast(Drawable *td, int dst_x, int dst_y, int width, int height,
     Drawable *ts, int src_x, int src_y)
 {
-    int sx2 = src_x + width - 1;
-    int sy2 = src_y + height - 1;
-    int dx2 = dst_x + width - 1;
-    int dy2 = dst_y + height - 1;
-    int intersect =
-        (src_x < dx2 && sx2 > dst_x &&
-         src_y < dy2 && sy2 > dst_y);
-
-    if (intersect) printf("INT\n");
     int span = width * td->bytespp;
     int dspan = td->pitch - span;
     int sspan = ts->pitch - span;
     int y = height;
-    Pixel *src, *dst;
-    if (1) {
-        dst = (Pixel *)(td->pixels + dy2 * td->pitch + dx2 * td->bytespp);
-        src = (Pixel *)(ts->pixels + sy2 * ts->pitch + sx2 * ts->bytespp);
+
+    /* check for overlap, but do nothing */
+    overlap(src_x, src_y, dst_x, dst_y, width, height);
+
+    Pixel *dst = (Pixel *)(td->pixels + dst_y * td->pitch + dst_x * td->bytespp);
+    Pixel *src = (Pixel *)(ts->pixels + src_y * ts->pitch + src_x * ts->bytespp);
+    do {
+        int x = width;
         do {
-            int x = width;
-            do {
-                *--dst = *--src;
-            } while (--x > 0);
-            dst = (Pixel *)((uint8_t *)dst - dspan);
-            src = (Pixel *)((uint8_t *)src - sspan);
-        } while (--y > 0);
-    } else {
-        dst = (Pixel *)(td->pixels + dst_y * td->pitch + dst_x * td->bytespp);
-        src = (Pixel *)(ts->pixels + src_y * ts->pitch + src_x * ts->bytespp);
-        do {
-            int x = width;
-            do {
-                *dst++ = *src++;
-            } while (--x > 0);
-            dst = (Pixel *)((uint8_t *)dst + dspan);
-            src = (Pixel *)((uint8_t *)src + sspan);
-        } while (--y > 0);
-    }
+            *dst++ = *src++;
+        } while (--x > 0);
+        dst = (Pixel *)((uint8_t *)dst + dspan);
+        src = (Pixel *)((uint8_t *)src + sspan);
+    } while (--y > 0);
 }
 #endif
 
+/* copy blit, handles any overlap, clips source and optionally destination */
 void draw_blit(Drawable *td, int dst_x, int dst_y, int width, int height,
     Drawable *ts, int src_x, int src_y)
 {
-    //printf("A   w/h %d,%d src %d,%d dst %d,%d max src %d,%d dst %d,%d\n", width, height,
-        //src_x, src_y, dst_x, dst_y, ts->width, ts->height, td->width, td->height);
-
-#if 1
     /* clip src to source Drawable */
     if (src_x < 0)
     {
@@ -1297,31 +1293,8 @@ void draw_blit(Drawable *td, int dst_x, int dst_y, int width, int height,
         width = ts->width - src_x;
     if (src_y + height > ts->height)
         height = ts->height - src_y;
-#endif
-#if 0
-    /* clip dst to destination Drawable */
-    if (dst_x < 0)
-    {
-        width += dst_x;
-        src_x -= dst_x;
-        dst_x = 0;
-    }
-    if (dst_y < 0)
-    {
-        height += dst_y;
-        src_y -= dst_y;
-        dst_y = 0;
-    }
-//#define WIDTH   td->width
-//#define HEIGHT  td->height
-#define MAXW    400
-#define MAXH    400
-    if (dst_x + width > MAXW)
-        width = MAXW - dst_x;
-    if (dst_y + height > MAXH)
-        height = MAXH - dst_y;
-#endif
-#if 1
+
+#if CLIP_TO_DEST
     /* clip dst to destination Drawable */
     int rx1 = 0;
     int ry1 = 0;
@@ -1349,9 +1322,9 @@ void draw_blit(Drawable *td, int dst_x, int dst_y, int width, int height,
     src_x = src_x + rx1 - dst_x;
     src_y = src_y + ry1 - dst_y;
 #endif
-#if 1
-    //printf("B   w/h %d,%d src %d,%d dst %d,%d max src %d,%d dst %d,%d\n", width, height,
-        //src_x, src_y, dst_x, dst_y, ts->width, ts->height, td->width, td->height);
+#if 0
+    printf("B   w/h %d,%d src %d,%d dst %d,%d max src %d,%d dst %d,%d\n", width, height,
+        src_x, src_y, dst_x, dst_y, ts->width, ts->height, td->width, td->height);
     if (src_x < 0) { printf("1\n"); exit(1); }
     if (src_y < 0) { printf("2\n"); exit(1); }
     if (src_x + width > ts->width) { printf("3\n"); exit(1); }
@@ -1402,6 +1375,7 @@ void draw_blit(Drawable *td, int dst_x, int dst_y, int width, int height,
         dst += dst_pitch;
     }
 }
+
 static int sdl_nextevent(struct console *con, struct console *con2)
 {
     int c;
