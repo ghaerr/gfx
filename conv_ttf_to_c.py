@@ -1,57 +1,33 @@
 #!/usr/bin/env python3
-"""
-Convert characters from a truetype font to a python bitmap for use with the bitmap or write method.
-The chango, noto_fonts and proverbs examples use converted TrueType fonts.
-
-.. seealso::
-    - :ref:`chango.py<chango>`.
-    - :ref:`noto_fonts.py<noto_fonts>`.
-    - :ref:`proverbs.py<proverbs>`.
-
-Example
-^^^^^^^
-
-.. code-block:: console
-
-    # convert the Chango-Regular.ttf to a python bitmap module with approximately 32 pixel high characters
-    ./write_font_converter.py Chango-Regular.ttf 32 -c 0x20-0x7f > chango_32.py
-
-.. code-block:: python
-
-    import tft_config
-    import chango_32
-    tft = tft_config.config(1)
-    tft.write(chango_32, "Hello World!", 0, 0)
-
-Usage
-^^^^^
-
-.. code-block:: console
-
-    usage: write_font_converter.py [-h] [-width FONT_WIDTH] (-c CHARACTERS | -s STRING) font_file font_height
-
-    Convert characters from a truetype font to a python bitmap for use with the bitmap method in the st7789 and ili9342 drivers.
-
-    positional arguments:
-    font_file             name of font file to convert.
-    font_height           size of font to create bitmaps from.
-
-    optional arguments:
-    -h, --help            show this help message and exit
-    -width FONT_WIDTH, --font_width FONT_WIDTH
-                            width of font to create bitmaps from.
-
-    character selection:
-    characters from the font to include in the bitmap.
-
-    -c CHARACTERS, --characters CHARACTERS
-                            integer or hex character values and/or ranges to include. For example: "65, 66, 67" or "32-127" or "0x30-0x39,
-                            0x41-0x5a"
-    -s STRING, --string STRING
-                            string of characters to include For example: "1234567890-."
-
-"""
-
+#
+# Convert characters from a truetype font to C source for use with GFX
+#
+# Aug 2025 Modified by Greg Haerr from the original at:
+# https://github.com/russhughes/st7789py_mpy/blob/master/utils/write_font_converter.py
+#
+# convert cour.ttf ' ' to '~' characters to C source at approximately 32 pixels height
+#   python3 write_font_converter.py cour.ttf 32 -c 0x20-0x7e > cour.c
+#
+# usage:
+#    conv_ttf_to_c.py [-h] [-width w] [-bpp (1 | 8)
+#                     (-c char_range | -s string) font_file font_height
+#
+#   outputs to stdout.
+#
+#   positional arguments:
+#   font_file             name of font file to convert.
+#   font_height           approximate output height of font in pixels
+#
+#   optional arguments:
+#   -h                  show this help message and exit
+#   -width width        output width of font in pixels, otherwise same as font_height
+#   -bpp (1 | 8)        output bits per pixel (1=bitmap, 8=antialias alpha bytes)
+#   -c char_range       characters from the font to include in the bitmap.
+#       integer or hex character values and/or ranges to include,
+#       for example: "65, 66, 67" or "32-127" or "0x30-0x39,0x41-0x5a"
+#   -s string           string of characters to include
+#       for example: "1234567890-."
+#
 
 # -*- coding: utf-8 -*-
 # Needs freetype-py>=1.0
@@ -106,25 +82,15 @@ import os
 def to_int(string):
     """
     Convert a string to an integer.
-
-    Args:
-        str (str): The string to convert to an integer.
-
-    Returns:
-        int: The converted integer value.
-
     """
-
     return int(string, base=16) if string.startswith("0x") else int(string)
 
 
 def get_chars(string):
     """
     Get a string of characters based on the given input.
-
     Args:
         string (str): The input string containing character ranges separated by commas.
-
     Returns:
         str: A string of characters formed by combining the character ranges.
     """
@@ -138,11 +104,9 @@ def get_chars(string):
 def wrap_list(lst, items_per_line=8):
     """
     Wrap a list of items into a formatted string representation.
-
     Args:
         lst (list): The list of items to wrap.
         items_per_line (int): The number of items to include per line (default: 8).
-
     Returns:
         str: A formatted string representation of the wrapped list.
     """
@@ -156,11 +120,9 @@ def wrap_list(lst, items_per_line=8):
 def wrap_bytes(lst, items_per_line=16):
     """
     Wrap a list of bytes into a formatted string representation.
-
     Args:
         lst (list): The list of bytes to wrap.
         items_per_line (int): The number of bytes to include per line (default: 16).
-
     Returns:
         str: A formatted string representation of the wrapped bytes.
     """
