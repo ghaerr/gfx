@@ -114,7 +114,7 @@ if __name__ == '__main__':
     text = 'S' if len(sys.argv) <= 2 else sys.argv[2]
     face = Face(name)
     #face.set_char_size( 16*64 )
-    face.set_pixel_sizes(0,16)
+    face.set_pixel_sizes(0,32)
 
     print("height:",face.height)
     print("ascent:",face.ascender)
