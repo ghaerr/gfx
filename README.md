@@ -18,21 +18,27 @@ A simple but powerful internal framebuffer based graphics and event library with
 
 The drawing functions all manipulate pixels in allocated Drawables, in fixed ARGB or ABGR format for speed, after which the back buffer is copied once per frame to SDL or the hardware framebuffer, usually without a conversion blit.
 
-Fonts can be 1bpp bitmaps or 8bpp antialiased, using compiled-in font data converted using the conv_ttf_to_c.py Python script for a specific font height. ROM fonts using the .F16 binary format can also be loaded from disk.
+Fonts can be 1bpp bitmaps or 8bpp antialiased, using compiled-in font data converted using the conv_ttf_to_c.py Python script for a specific font height. ROM fonts using the .F16 (or .F19, etc) binary format can also be loaded from disk.
 
 Text display can be rotated dynamically, and oversampling is used to eliminate unwanted drdropouts of foreground or background pixels.
+
+The GFX library is under construction; currently it is contained entirely in the file draw.c.
 
 ## Thanks to the work of others
 
 Retrieving Truetype font data using Python is made possible using Nicolas P. Rougier's freetype-py binding at https://github.com/rougier/freetype-py. (Install using 'pip freetype-py').
 
-The conv_ttf_to_c.py font conversion script comes originally from Russ Hughes' MicroPython LCD Driver project at https://github.com/russhughes/st7789py_mpy.
+The conv_ttf_to_c.py font conversion script comes originally from Russ Hughes' MicroPython LCD Driver project at https://github.com/russhughes/st7789py_mpy and documentation at https://russhughes.github.io/st7789py_mpy/fonts.html#true-type-fonts.
 
 That python script uses font handling classes from Dan Bader's blog post on using freetype at https://dbader.org/blog/monochrome-font-rendering-with-freetype-and-python.
 
 Negative glyph.left fixes are from Stephen Irons' contribution to Peter Hinch's MicroPython font handling project at https://github.com/peterhinch/micropython-font-to-py.
 
 The C font rotation algorithm is based on Salvatore Sanfilippo's Python MicroFont rendering library at https://github.com/antirez/microfont.
+
+Some of the included *.F16 and *.F19 fonts are from Joseph Gil's fntcol16.zip package available from http://ftp.lanet.lv/ftp/mirror/x2ftp/msdos/programming/misc/fntcol16.zip and https://github.com/dokkaebi-project/font-archive.
+
+The Kumppa demo was converted from Teemu Suutari's X11 screensaver, included in Jamie Zawinski's [XScreenSaver collection](https://www.jwz.org/xscreensaver/screenshots) available from  https://www.jwz.org/xscreensaver/xscreensaver-6.12.tar.gz and https://github.com/Zygo/xscreensaver. The X11 demos are being used along with some quick-and-dirty X11-to-GFX conversion functions to test the GFX graphics routines for correctness.
 
 ## Gallery
 
