@@ -9,8 +9,10 @@ A simple but powerful internal framebuffer based graphics and event library with
 - Text Rotation - Bitmap or antialiased text at any angle with rotated background bits
 - Text Console - scrolled text regions using any font
 - Backbuffered drawing in 32bpp ARGB or ABGR pixel format
-- Simple platform independent API, some X11 conversion functions
-- Backend - SDL or hardware framebuffer, non-buffered ELKS VGA coming
+- Simple platform independent API
+- Event Handling - keyboard and mouse event handling (coming)
+- Limited X11 function conversion, used for testing X11 graphics with library
+- Backend - SDL or hardware framebuffer, non-buffered ELKS VGA (coming)
 
 ## Library design
 
@@ -28,7 +30,7 @@ The conv_ttf_to_c.py font conversion script comes originally from Russ Hughes' M
 
 That python script uses font handling classes from Dan Bader's blog post on using freetype at https://dbader.org/blog/monochrome-font-rendering-with-freetype-and-python.
 
-Negative glyph.left fixes are from Peter Hinch's MicroPython font handling project at https://github.com/peterhinch/micropython-font-to-py.
+Negative glyph.left fixes are from Stephen Irons' contribution to Peter Hinch's MicroPython font handling project at https://github.com/peterhinch/micropython-font-to-py.
 
 The C font rotation algorithm is based on Salvatore Sanfilippo's Python MicroFont rendering library at https://github.com/antirez/microfont.
 
@@ -40,7 +42,7 @@ Twin consoles showing antialiased vs bitmap fonts
 Rotated text
 ![1](https://github.com/ghaerr/gfx/blob/master/Screenshots/courier_rotated.png)
 
-Kumppa X11 screensaver converted using x11 conversion sublibrary
+Kumppa X11 screensaver converted using x11 conversion sublibrary, uses source clipping
 ![1](https://github.com/ghaerr/gfx/blob/master/Screenshots/kumppa.png)
 
 Converted Xswarm screensaver
