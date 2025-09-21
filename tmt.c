@@ -779,7 +779,7 @@ tmt_clean(TMT *vt)
 void
 tmt_reset(TMT *vt)
 {
-    memset(vt, 0, sizeof(vt));
+    memset(vt, 0, sizeof(*vt));
     resetparser(vt);
     vt->attrs = vt->oldattrs = defattrs;
     memset(&vt->ms, 0, sizeof(vt->ms));
