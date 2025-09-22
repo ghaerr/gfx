@@ -902,7 +902,10 @@ struct console *create_console(int width, int height)
     struct console *con;
     int size, i;
 
-    size = sizeof(struct console) + width * height * sizeof(uint16_t);
+    size = sizeof(struct console);
+#if OLDWAY
+    size += width * height * sizeof(uint16_t);
+#endif
     con = malloc(size);
     if (!con) return 0;
 

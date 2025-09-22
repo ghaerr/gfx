@@ -122,7 +122,6 @@ typedef struct TMTSCREEN TMTSCREEN;
 struct TMTSCREEN{
     size_t nline;
     size_t ncol;
-
     TMTLINE **lines;
 };
 
