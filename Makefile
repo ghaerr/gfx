@@ -44,6 +44,8 @@ fonts/lucida_32_tt.o: fonts/lucida.ttf
 	python3 conv_ttf_to_c.py $^ 32 -bpp 8 -c 0x20-0x7e > $*.c
 	$(CC) -I. -c $*.c -o $*.o
 
+draw.o tmt.o: tmt.h
+
 draw: draw.o rom8x16.o $(GENFONTOBJS) tmt.o
 	$(CC) -o $@ $^ $(LDLIBS)
 

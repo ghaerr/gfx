@@ -264,8 +264,6 @@ HANDLER(el)
 }
 
 HANDLER(sgr)
-    #define FGBG(c)  *(P0(i) <  40? &vt->attrs.fg : &vt->attrs.bg) = c
-    #define FGBGB(c) *(P0(i) < 100? &vt->attrs.fg : &vt->attrs.bg) = c
     for (size_t i = 0; i < vt->npar; i++) switch (P0(i)){
         case  0: vt->attrs                    = defattrs;   break;
         case  1: case 22: vt->attrs.bold      = P0(i) < 20; break;
@@ -275,23 +273,44 @@ HANDLER(sgr)
         case  7: case 27: vt->attrs.reverse   = P0(i) < 20; break;
         case  8: case 28: vt->attrs.invisible = P0(i) < 20; break;
         case 10: case 11: vt->acs             = P0(i) > 10; break;
-        case 30: case 40: FGBG(TMT_COLOR_BLACK);            break;
-        case 31: case 41: FGBG(TMT_COLOR_RED);              break;
-        case 32: case 42: FGBG(TMT_COLOR_GREEN);            break;
-        case 33: case 43: FGBG(TMT_COLOR_BROWN);            break;
-        case 34: case 44: FGBG(TMT_COLOR_BLUE);             break;
-        case 35: case 45: FGBG(TMT_COLOR_MAGENTA);          break;
-        case 36: case 46: FGBG(TMT_COLOR_CYAN);             break;
-        case 37: case 47: FGBG(TMT_COLOR_LTGRAY);           break;
-        case 39: case 49: FGBG(TMT_COLOR_DEFAULT);          break;
-        case 90: case 100: FGBGB(TMT_COLOR_GRAY);           break;
-        case 91: case 101: FGBGB(TMT_COLOR_LTRED);          break;
-        case 92: case 102: FGBGB(TMT_COLOR_LTGREEN);        break;
-        case 93: case 103: FGBGB(TMT_COLOR_YELLOW);         break;
-        case 94: case 104: FGBGB(TMT_COLOR_LTBLUE);         break;
-        case 95: case 105: FGBGB(TMT_COLOR_LTMAGENTA);      break;
-        case 96: case 106: FGBGB(TMT_COLOR_LTCYAN);         break;
-        case 97: case 107: FGBGB(TMT_COLOR_WHITE);          break;
+
+        case 30: vt->attrs.fg = TMT_COLOR_BLACK;            break;
+        case 31: vt->attrs.fg = TMT_COLOR_RED;              break;
+        case 32: vt->attrs.fg = TMT_COLOR_GREEN;            break;
+        case 33: vt->attrs.fg = TMT_COLOR_BROWN;            break;
+        case 34: vt->attrs.fg = TMT_COLOR_BLUE;             break;
+        case 35: vt->attrs.fg = TMT_COLOR_MAGENTA;          break;
+        case 36: vt->attrs.fg = TMT_COLOR_CYAN;             break;
+        case 37: vt->attrs.fg = TMT_COLOR_LTGRAY;           break;
+        case 39: vt->attrs.fg = TMT_COLOR_DEFAULT;          break;
+
+        case 40: vt->attrs.bg = TMT_COLOR_BLACK;            break;
+        case 41: vt->attrs.bg = TMT_COLOR_RED;              break;
+        case 42: vt->attrs.bg = TMT_COLOR_GREEN;            break;
+        case 43: vt->attrs.bg = TMT_COLOR_BROWN;            break;
+        case 44: vt->attrs.bg = TMT_COLOR_BLUE;             break;
+        case 45: vt->attrs.bg = TMT_COLOR_MAGENTA;          break;
+        case 46: vt->attrs.bg = TMT_COLOR_CYAN;             break;
+        case 47: vt->attrs.bg = TMT_COLOR_LTGRAY;           break;
+        case 49: vt->attrs.bg = TMT_COLOR_DEFAULT;          break;
+
+        case 90: vt->attrs.fg = TMT_COLOR_GRAY;             break;
+        case 91: vt->attrs.fg = TMT_COLOR_LTRED;            break;
+        case 92: vt->attrs.fg = TMT_COLOR_LTGREEN;          break;
+        case 93: vt->attrs.fg = TMT_COLOR_YELLOW;           break;
+        case 94: vt->attrs.fg = TMT_COLOR_LTBLUE;           break;
+        case 95: vt->attrs.fg = TMT_COLOR_LTMAGENTA;        break;
+        case 96: vt->attrs.fg = TMT_COLOR_LTCYAN;           break;
+        case 97: vt->attrs.fg = TMT_COLOR_WHITE;            break;
+
+        case 100: vt->attrs.bg = TMT_COLOR_GRAY;            break;
+        case 101: vt->attrs.bg = TMT_COLOR_LTRED;           break;
+        case 102: vt->attrs.bg = TMT_COLOR_LTGREEN;         break;
+        case 103: vt->attrs.bg = TMT_COLOR_YELLOW;          break;
+        case 104: vt->attrs.bg = TMT_COLOR_LTBLUE;          break;
+        case 105: vt->attrs.bg = TMT_COLOR_LTMAGENTA;       break;
+        case 106: vt->attrs.bg = TMT_COLOR_LTCYAN;          break;
+        case 107: vt->attrs.bg = TMT_COLOR_WHITE;           break;
     }
 }
 
@@ -565,6 +584,8 @@ tmt_open(size_t nline, size_t ncol, TMTCALLBACK cb, void *p,
     vt->attrs = vt->oldattrs = defattrs;
 
     if (!tmt_resize(vt, nline, ncol)) return tmt_close(vt), NULL;
+    printf("TMTATTRS %lu\n", sizeof(struct TMTATTRS));
+    printf("TMTCHAR %lu\n", sizeof(struct TMTCHAR));
     return vt;
 }
 
@@ -788,7 +809,7 @@ tmt_clean(TMT *vt)
 void
 tmt_reset(TMT *vt)
 {
-    memset(vt, 0, sizeof(*vt));
+    vt->curs.r = vt->curs.c = vt->oldcurs.r = vt->oldcurs.c = vt->acs = (bool)0;
     resetparser(vt);
     vt->attrs = vt->oldattrs = defattrs;
     memset(&vt->ms, 0, sizeof(vt->ms));

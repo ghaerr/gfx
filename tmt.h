@@ -69,7 +69,6 @@ typedef struct TMT TMT;
 
 /* colors arranged in CGA/EGA palette order */
 typedef enum{
-    TMT_COLOR_DEFAULT = -1,
     TMT_COLOR_BLACK = 0,
     TMT_COLOR_BLUE,
     TMT_COLOR_GREEN,
@@ -85,27 +84,27 @@ typedef enum{
     TMT_COLOR_LTRED,
     TMT_COLOR_LTMAGENTA,
     TMT_COLOR_YELLOW,
-    TMT_COLOR_WHITE
-
+    TMT_COLOR_WHITE,
+    TMT_COLOR_DEFAULT
 } tmt_color_t;
 
 typedef struct TMTATTRS TMTATTRS;
 struct TMTATTRS{
-    bool bold;
-    bool dim;
-    bool underline;
-    bool blink;
-    bool reverse;
-    bool invisible;
-    tmt_color_t fg;
-    tmt_color_t bg;
-};
+    bool bold:1;
+    bool dim:1;
+    bool underline:1;
+    bool blink:1;
+    bool reverse:1;
+    bool invisible:1;
+    tmt_color_t fg:5;
+    tmt_color_t bg:5;
+} __attribute__((packed));
 
 typedef struct TMTCHAR TMTCHAR;
 struct TMTCHAR{
     wchar_t c;
     TMTATTRS a;
-};
+} __attribute__((packed));
 
 typedef struct TMTPOINT TMTPOINT;
 struct TMTPOINT{

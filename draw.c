@@ -714,7 +714,8 @@ static void draw_console_ram(Drawable *dp, struct console *con, int x1, int y1,
                 attr = (attr & 0xF0) | fgattr;
             if (bgattr != TMT_COLOR_DEFAULT)
                 attr = (attr & 0x0F) | (bgattr << 4);
-            if (s->lines[y]->chars[x].a.bold) attr += 0x08;
+            if (s->lines[y]->chars[x].a.bold)
+                attr += 0x08;
             if (s->lines[y]->chars[x].a.reverse)
                 attr = ((attr >> 4) & 0x0f) | ((attr << 4) & 0xF0);
             color_from_attr(dp, attr, &fg, &bg);
