@@ -58,36 +58,13 @@ struct TMT{
     TMTPOINT curs, oldcurs;
     TMTATTRS attrs, oldattrs;
 
-    // VT100-derived terminals have a wrap behavior where the cursor "sticks"
-    // at the end of a line instead of immediately wrapping.  This allows you
-    // to use the last column without getting extra blank lines or
-    // unintentionally scrolling the screen.  The logic we implement for it
-    // is not exactly like that of a real VT100, but it seems to be
-    // sufficient for things to work as expected in the use cases and with
-    // the terminfo files I've tested with.  Specifically, I call the case
-    // where the cursor has advanced exactly one position past the rightmost
-    // column "hanging".  A rough description of the current algorithm is
-    // that there are two cases which each have two sub-cases:
-    // 1. You're hanging onto the next line below.  That is, you're not at
-    //    the bottom of the screen/scrolling region.
-    //    1a. If you receive a newline, hanging mode is canceled and nothing
-    //        else happens.  In particular, you do *not* advanced to the next
-    //        line.  You're already *at* the start of the "next" line.
-    //    2b. If you receive a printable character, just cancel hanging mode.
-    // 2. You're hanging past the bottom of the screen/scrolling region.
-    //    2a. If you receive a newline or printable character, scroll the
-    //        screen up one line and cancel hanging.
-    //    2b. If you receive a cursor reposition or whatever, cancel hanging.
-    // Below, hang is 0 if not hanging, or 1 or 2 as described above.
-    int hang;
-
     // Name of the terminal for XTVERSION (if null, use default).
     char * terminal_name;
 
     size_t minline;
     size_t maxline;
 
-    bool dirty, acs, ignored;
+    bool dirty, acs, ignored, XN;
     TMTSCREEN screen;
     TMTLINE *tabs;
 
@@ -385,8 +362,7 @@ reverse_nl(TMT *vt)
 {
     COMMON_VARS;
 
-    vt->hang = 0;
-
+    vt->XN = false;
     if (c->r == vt->minline)
         scrdn(vt, SCR_DEF, 1);
     else if (c->r > 0)
@@ -398,31 +374,11 @@ nl(TMT *vt)
 {
     COMMON_VARS;
 
-    if (vt->hang)
-    {
-        if (vt->hang == 2)
-            scrup(vt, SCR_DEF, 1);
-        vt->hang = 0;
-        return;
-    }
-
+    vt->XN = false;
     if (c->r == vt->maxline)
         scrup(vt, SCR_DEF, 1);
     else if (c->r < (s->nline-1))
         c->r++;
-}
-
-static void
-cr(TMT *vt)
-{
-    COMMON_VARS;
-    c->c = 0;
-    if (vt->hang==1)
-    {
-        vt->hang = 0;
-        if (c->r > vt->minline && c->r <= vt->maxline)
-            c->r--;
-    }
 }
 
 static void
@@ -464,10 +420,10 @@ handlechar(TMT *vt, char i)
                                  fixcursor(vt); resetparser(vt););
 
     DO(S_NUL, "\x07",       CB(vt, TMT_MSG_BELL, NULL))
-    DO(S_NUL, "\x08",       if (c->c) c->c--)
+    DO(S_NUL, "\x08",       vt->XN = false; if (c->c) c->c--)
     DO(S_NUL, "\x09",       while (++c->c < s->ncol - 1 && t[c->c].c != L'*'))
     DO(S_NUL, "\x0a",       nl(vt))
-    DO(S_NUL, "\x0d",       cr(vt))
+    DO(S_NUL, "\x0d",       vt->XN = false; c->c = 0)
     DO(S_NUL, "\x0e",       vt->charset = 1) // Shift Out (Switch to G1)
     DO(S_NUL, "\x0f",       vt->charset = 0) // Shift In  (Switch to G0)
     ON(S_NUL, "\x1b",       vt->state = S_ESC)
@@ -497,7 +453,7 @@ handlechar(TMT *vt, char i)
     DO(S_ARG, "G",          c->c = MIN(P1(0) - 1, s->ncol - 1))
     DO(S_ARG, "d",          c->r = MIN(P1(0) - 1, s->nline - 1))
     DO(S_ARG, "r",          margin(vt, P1(0)-1, P1(1)-1))
-    DO(S_ARG, "Hf",         c->r = P1(0) - 1; c->c = P1(1) - 1)
+    DO(S_ARG, "Hf",         vt->XN = false; c->r = P1(0) - 1; c->c = P1(1) - 1)
     DO(S_ARG, "I",          while (++c->c < s->ncol - 1 && t[c->c].c != L'*'))
     DO(S_ARG, "J",          ed(vt))
     DO(S_ARG, "K",          el(vt))
@@ -663,9 +619,17 @@ writecharatcurs(TMT *vt, wchar_t w)
 {
     COMMON_VARS;
 
-    if (vt->hang == 2)
-        scrup(vt, SCR_DEF, 1);
-    vt->hang = 0;
+    if (vt->XN)
+    {
+        vt->XN = false;
+        c->c = 0;
+        c->r++;
+        if (c->r > vt->maxline)
+        {
+            scrup(vt, SCR_DEF, 1);
+            c->r = vt->maxline;
+        }
+    }
 
     if (vt->decode_unicode)
     {
@@ -731,17 +695,7 @@ writecharatcurs(TMT *vt, wchar_t w)
 
     if (c->c < s->ncol - 1)
         c->c++;
-    else{
-        vt->hang = 1;
-        c->c = 0;
-        c->r++;
-    }
-
-    if (vt->hang && c->r > vt->maxline){
-        c->r = vt->maxline;
-        if (vt->hang)
-            vt->hang = 2;
-    }
+    else vt->XN = true;
 }
 
 static inline size_t
@@ -768,7 +722,7 @@ tmt_write(TMT *vt, const char *s, size_t n)
 
     for (size_t p = 0; p < n; p++){
         if (handlechar(vt, s[p]))
-            vt->hang = 0;
+            ;
         else if (vt->acs)
             writecharatcurs(vt, tacs(vt, (unsigned char)s[p]));
         else if (vt->nmb >= BUF_MAX)
@@ -809,7 +763,7 @@ tmt_clean(TMT *vt)
 void
 tmt_reset(TMT *vt)
 {
-    vt->curs.r = vt->curs.c = vt->oldcurs.r = vt->oldcurs.c = vt->acs = (bool)0;
+    vt->curs.r = vt->curs.c = vt->oldcurs.r = vt->oldcurs.c = vt->acs = vt->XN = 0;
     resetparser(vt);
     vt->attrs = vt->oldattrs = defattrs;
     memset(&vt->ms, 0, sizeof(vt->ms));
