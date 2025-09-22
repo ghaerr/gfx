@@ -1,6 +1,7 @@
 # GFX graphics library
 
 CFLAGS = -Wall -Wno-missing-braces
+CFLAGS += -Wno-unused-variable -O3
 LDLIBS += -lSDL2
 
 # generated font files
@@ -43,7 +44,7 @@ fonts/lucida_32_tt.o: fonts/lucida.ttf
 	python3 conv_ttf_to_c.py $^ 32 -bpp 8 -c 0x20-0x7e > $*.c
 	$(CC) -I. -c $*.c -o $*.o
 
-draw: draw.o rom8x16.o $(GENFONTOBJS)
+draw: draw.o rom8x16.o $(GENFONTOBJS) tmt.o
 	$(CC) -o $@ $^ $(LDLIBS)
 
 swarm: swarm.c x11.c draw.c rom8x16.c

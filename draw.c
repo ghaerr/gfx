@@ -539,6 +539,7 @@ static void reset_dirty_region(struct console *con)
     con->update.w = con->update.h = -1;
 }
 
+#if OLDWAY
 /* clear line y from x1 up to and including x2 to attribute attr */
 static void clear_line(struct console *con, int x1, int x2, int y, unsigned char attr)
 {
@@ -583,6 +584,7 @@ void console_movecursor(struct console *con, int x, int y)
     con->cury = con->lasty = y;
     update_dirty_region(con, x, y, 1, 1);
 }
+#endif
 
 /* draw horizontal line inclusive of (x1, x2) w/clipping */
 void draw_hline(Drawable *dp, int x1, int x2, int y)
@@ -622,9 +624,6 @@ void console_textout(struct console *con, int c, int attr)
 {
     switch (c) {
     case '\0':  return;
-    case '\b':  if (--con->curx < 0) con->curx = 0; goto update;
-    case '\r':  con->curx = 0; goto update;
-    case '\n':  goto scroll;
     //case '-':   scrolldn(con, 0, con->lines-1, ATTR_DEFAULT); return;   //FIXME
     //case '=':   scrollup(con, 0, con->lines-1, ATTR_DEFAULT); return;   //FIXME
     case '-':   angle--;
@@ -633,6 +632,18 @@ void console_textout(struct console *con, int c, int attr)
                 update_dirty_region(con, 0, 0, con->cols, con->lines);
                 return;
     case '=':   angle++; goto same;
+    }
+#if !OLDWAY
+    char buf[2];
+    buf[0] = c;
+    buf[1] = '\0';
+    tmt_write(con->vt, buf, 0);
+    update_dirty_region(con, 0, 0, con->cols, con->lines);
+#else
+    switch (c) {
+    case '\b':  if (--con->curx < 0) con->curx = 0; goto update;
+    case '\r':  con->curx = 0; goto update;
+    case '\n':  goto scroll;
     case ':':   if (--oversamp <= 0) oversamp = 1;
     same2:      printf("%d\n", oversamp);
                 goto same;
@@ -654,6 +665,7 @@ scroll:
 
 update:
     console_movecursor(con, con->curx, con->cury);
+#endif
 }
 
 /* convert EGA attribute to pixel value */
@@ -687,6 +699,31 @@ static void color_from_attr(Drawable *dp, unsigned int attr, Pixel *pfg, Pixel *
 static void draw_console_ram(Drawable *dp, struct console *con, int x1, int y1,
     int sx, int sy, int ex, int ey)
 {
+#if !OLDWAY
+    const TMTSCREEN *s = tmt_screen(con->vt);
+    Pixel fg, bg;
+
+    for (int y = sy; y < ey; y++) {
+        int j = y * con->cols + sx;
+        for (int x = sx; x < ex; x++) {
+            unsigned int ch = s->lines[y]->chars[x].c;
+            unsigned int fgattr = s->lines[y]->chars[x].a.fg;
+            unsigned int bgattr = s->lines[y]->chars[x].a.bg;
+            unsigned int attr = ATTR_DEFAULT;
+            if (fgattr != TMT_COLOR_DEFAULT)
+                attr = (attr & 0xF0) | fgattr;
+            if (bgattr != TMT_COLOR_DEFAULT)
+                attr = (attr & 0x0F) | (bgattr << 4);
+            if (s->lines[y]->chars[x].a.bold) attr += 0x08;
+            if (s->lines[y]->chars[x].a.reverse)
+                attr = ((attr >> 4) & 0x0f) | ((attr << 4) & 0xF0);
+            color_from_attr(dp, attr, &fg, &bg);
+            draw_font_char(dp, con->font, ch, x1, y1,
+                x * con->char_width, y * con->char_height, fg, bg, 2, angle);
+            j++;
+        }
+    }
+#else
     uint16_t *vidram = con->text_ram;
     Pixel fg, bg;
 
@@ -700,6 +737,7 @@ static void draw_console_ram(Drawable *dp, struct console *con, int x1, int y1,
             j++;
         }
     }
+#endif
 }
 
 /* draw console onto drawable, flush=1 writes update rect to SDL, =2 draw whole console */
@@ -722,6 +760,11 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 
         /* draw cursor */
         color_from_attr(dp, ATTR_DEFAULT, &fg, &bg);
+#if !OLDWAY
+        const TMTPOINT *cursor = tmt_cursor(con->vt);
+        con->curx = cursor->c;
+        con->cury = cursor->r;
+#endif
         draw_font_char(dp, con->font, '_', x, y,
             con->curx * con->char_width, con->cury * con->char_height, fg, bg, 0, angle);
 
@@ -849,6 +892,10 @@ Font *console_load_font(struct console *con, char *path)
     return font;
 }
 
+static void callback(tmt_msg_t m, TMT *vt, const void *a, void *p)
+{
+}
+
 struct console *create_console(int width, int height)
 {
     struct console *con;
@@ -859,6 +906,11 @@ struct console *create_console(int width, int height)
     if (!con) return 0;
 
     memset(con, 0, sizeof(struct console));
+#if !OLDWAY
+    con->vt = tmt_open(height, width, callback, NULL, NULL);
+    if (!con->vt) return 0;
+    update_dirty_region(con, 0, 0, width, height);
+#endif
     con->cols = width;
     con->lines = height;
     console_load_font(con, NULL);       /* loads default font */
@@ -870,11 +922,12 @@ struct console *create_console(int width, int height)
     //console_load_font(con, "DOSJ-437.F19");
     //console_load_font(con, "CGA.F08");
 
+#if OLDWAY
     /* init text ram and update rect */
     for (i = 0; i < height; i++)
         clear_line(con, 0, con->cols - 1, i, ATTR_DEFAULT);
     console_movecursor(con, 0, con->lines-1);
-
+#endif
     return con;
 }
 

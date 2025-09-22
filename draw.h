@@ -1,6 +1,7 @@
 /* GFX library header file */
 #include <stdint.h>
 #include "font.h"
+#include "tmt.h"
 
 /* supported internal framebuffer pixel formats */
 #define MWPF_DEFAULT        MWPF_TRUECOLORARGB
@@ -55,7 +56,10 @@ struct console {
     int lasty;
     Rect update;            /* console update region in cols/lines coordinates */
     Drawable *dp;            //FIXME for testing only
+    TMT *vt;
+#if OLDWAY
     uint16_t text_ram[];    /* adaptor RAM (= cols * lines * 2) in single malloc */
+#endif
 };
 
 /* create 32 bit 8/8/8/8 format pixel (0xAARRGGBB) from RGB triplet*/

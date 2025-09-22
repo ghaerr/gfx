@@ -264,7 +264,8 @@ HANDLER(el)
 }
 
 HANDLER(sgr)
-    #define FGBG(c) *(P0(i) < 40? &vt->attrs.fg : &vt->attrs.bg) = c
+    #define FGBG(c)  *(P0(i) <  40? &vt->attrs.fg : &vt->attrs.bg) = c
+    #define FGBGB(c) *(P0(i) < 100? &vt->attrs.fg : &vt->attrs.bg) = c
     for (size_t i = 0; i < vt->npar; i++) switch (P0(i)){
         case  0: vt->attrs                    = defattrs;   break;
         case  1: case 22: vt->attrs.bold      = P0(i) < 20; break;
@@ -277,12 +278,20 @@ HANDLER(sgr)
         case 30: case 40: FGBG(TMT_COLOR_BLACK);            break;
         case 31: case 41: FGBG(TMT_COLOR_RED);              break;
         case 32: case 42: FGBG(TMT_COLOR_GREEN);            break;
-        case 33: case 43: FGBG(TMT_COLOR_YELLOW);           break;
+        case 33: case 43: FGBG(TMT_COLOR_BROWN);            break;
         case 34: case 44: FGBG(TMT_COLOR_BLUE);             break;
         case 35: case 45: FGBG(TMT_COLOR_MAGENTA);          break;
         case 36: case 46: FGBG(TMT_COLOR_CYAN);             break;
-        case 37: case 47: FGBG(TMT_COLOR_WHITE);            break;
+        case 37: case 47: FGBG(TMT_COLOR_LTGRAY);           break;
         case 39: case 49: FGBG(TMT_COLOR_DEFAULT);          break;
+        case 90: case 100: FGBGB(TMT_COLOR_GRAY);           break;
+        case 91: case 101: FGBGB(TMT_COLOR_LTRED);          break;
+        case 92: case 102: FGBGB(TMT_COLOR_LTGREEN);        break;
+        case 93: case 103: FGBGB(TMT_COLOR_YELLOW);         break;
+        case 94: case 104: FGBGB(TMT_COLOR_LTBLUE);         break;
+        case 95: case 105: FGBGB(TMT_COLOR_LTMAGENTA);      break;
+        case 96: case 106: FGBGB(TMT_COLOR_LTCYAN);         break;
+        case 97: case 107: FGBGB(TMT_COLOR_WHITE);          break;
     }
 }
 
