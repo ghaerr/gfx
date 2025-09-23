@@ -60,63 +60,63 @@
              | x )
 
 static const uint32_t bittab[] = {
-				  C(0x2),C(0x3),C(0x4),C(0x5),C(0x6),C(0x7),
-	C(0x8),C(0x9),C(0xa),C(0xb),C(0xc),C(0xd),C(0xe),C(0xf),
-	D(0x0),D(0x1),D(0x2),D(0x3),D(0x4),D(0x5),D(0x6),D(0x7),
-	D(0x8),D(0x9),D(0xa),D(0xb),D(0xc),D(0xd),D(0xe),D(0xf),
-	E(0x0),E(0x1),E(0x2),E(0x3),E(0x4),E(0x5),E(0x6),E(0x7),
-	E(0x8),E(0x9),E(0xa),E(0xb),E(0xc),E(0xd),E(0xe),E(0xf),
-	F(0x0),F(0x1),F(0x2),F(0x3),F(0x4)
+                  C(0x2),C(0x3),C(0x4),C(0x5),C(0x6),C(0x7),
+    C(0x8),C(0x9),C(0xa),C(0xb),C(0xc),C(0xd),C(0xe),C(0xf),
+    D(0x0),D(0x1),D(0x2),D(0x3),D(0x4),D(0x5),D(0x6),D(0x7),
+    D(0x8),D(0x9),D(0xa),D(0xb),D(0xc),D(0xd),D(0xe),D(0xf),
+    E(0x0),E(0x1),E(0x2),E(0x3),E(0x4),E(0x5),E(0x6),E(0x7),
+    E(0x8),E(0x9),E(0xa),E(0xb),E(0xc),E(0xd),E(0xe),E(0xf),
+    F(0x0),F(0x1),F(0x2),F(0x3),F(0x4)
 };
 
 #pragma GCC diagnostic ignored "-Wparentheses"
 
 size_t xmbrtowc(wchar_t *restrict wc, const char *restrict src, size_t n,
-	Mbstate_t *restrict st)
+    Mbstate_t *restrict st)
 {
-	static unsigned internal_state;
-	unsigned c;
-	const unsigned char *s = (const void *)src;
-	const size_t N = n;
-	wchar_t dummy;
+    static unsigned internal_state;
+    unsigned c;
+    const unsigned char *s = (const void *)src;
+    const size_t N = n;
+    wchar_t dummy;
 
-	if (!st) st = (void *)&internal_state;
-	c = *(unsigned *)st;
-	
-	if (!s) {
-		if (c) goto ilseq;
-		return 0;
-	} else if (!wc) wc = &dummy;
+    if (!st) st = (void *)&internal_state;
+    c = *(unsigned *)st;
 
-	if (!n) return -2;
-	if (!c) {
-		if (*s < 0x80) return !!(*wc = *s);
-		if (MB_CUR_MAX==1) return (*wc = CODEUNIT(*s)), 1;
-		if (*s-SA > SB-SA) goto ilseq;
-		c = bittab[*s++-SA]; n--;
-	}
+    if (!s) {
+        if (c) goto ilseq;
+        return 0;
+    } else if (!wc) wc = &dummy;
 
-	if (n) {
-		if (OOB(c,*s)) goto ilseq;
+    if (!n) return -2;
+    if (!c) {
+        if (*s < 0x80) return !!(*wc = *s);
+        if (MB_CUR_MAX==1) return (*wc = CODEUNIT(*s)), 1;
+        if (*s-SA > SB-SA) goto ilseq;
+        c = bittab[*s++-SA]; n--;
+    }
+
+    if (n) {
+        if (OOB(c,*s)) goto ilseq;
 loop:
-		c = c<<6 | *s++-0x80; n--;
-		if (!(c&(1U<<31))) {
-			*(unsigned *)st = 0;
-			*wc = c;
-			return N-n;
-		}
-		if (n) {
-			if (*s-0x80u >= 0x40) goto ilseq;
-			goto loop;
-		}
-	}
+        c = c<<6 | *s++-0x80; n--;
+        if (!(c&(1U<<31))) {
+            *(unsigned *)st = 0;
+            *wc = c;
+            return N-n;
+        }
+        if (n) {
+            if (*s-0x80u >= 0x40) goto ilseq;
+            goto loop;
+        }
+    }
 
-	*(unsigned *)st = c;
-	return -2;
+    *(unsigned *)st = c;
+    return -2;
 ilseq:
-	*(unsigned *)st = 0;
-	errno = EILSEQ;
-	return -1;
+    *(unsigned *)st = 0;
+    errno = EILSEQ;
+    return -1;
 }
 
 size_t xwcrtomb(char *restrict s, wchar_t wc, Mbstate_t *restrict st)
