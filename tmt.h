@@ -30,9 +30,10 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <wchar.h>
+#include "wchar.h"
 
 /**** INVALID WIDE CHARACTER */
+#define TMT_INVALID_CHAR ((wchar_t)0x007f)  /* use DEL box glyph for smaller fonts */
 #ifndef TMT_INVALID_CHAR
 #define TMT_INVALID_CHAR ((wchar_t)0xfffd)
 #endif

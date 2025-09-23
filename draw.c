@@ -297,8 +297,11 @@ int draw_font_bitmap(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, 
     int sin_a, cos_a, s;        /* for rotated bitmaps */
 
     c -= font->firstchar;
-    if (c < 0 || c > font->size)
-        c = font->defaultchar - font->firstchar;
+    if (c < 0 || c > font->size) {
+        c = 127 - font->firstchar;  /* use DEL box for smaller fonts */
+        if (c < 0 || c > font->size)
+            c = font->defaultchar - font->firstchar;
+   }
 
     /* get glyph bitmap start */
     if (font->offset.ptr8) {
@@ -409,8 +412,11 @@ int draw_font_alpha(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, i
     int sin_a, cos_a, s;        /* for rotated bitmaps */
 
     c -= font->firstchar;
-    if (c < 0 || c > font->size)
-        c = font->defaultchar - font->firstchar;
+    if (c < 0 || c > font->size) {
+        c = 127 - font->firstchar;  /* use DEL box for smaller fonts */
+        if (c < 0 || c > font->size)
+            c = font->defaultchar - font->firstchar;
+    }
 
     /* get glyph alpha bytes */
     if (font->offset.ptr8) {
@@ -637,7 +643,7 @@ void console_textout(struct console *con, int c, int attr)
     char buf[2];
     buf[0] = c;
     buf[1] = '\0';
-    tmt_write(con->vt, buf, 0);
+    tmt_write(con->vt, buf, 1);
     update_dirty_region(con, 0, 0, con->cols, con->lines);
 #else
     switch (c) {
@@ -1497,6 +1503,28 @@ int main(int ac, char **av)
     //console_load_font(con2, "DOSJ-437.F19");
     clear_screen(dp);
     draw_flush(dp);
+
+#if 2
+    /* test invalid UTF-8 */
+    console_textout(con, 0xc0, ATTR_DEFAULT);
+    console_textout(con2, 0xc1, ATTR_DEFAULT);
+    /* test undefined glyph */
+    //console_textout(con, 127, ATTR_DEFAULT);
+    //console_textout(con2, 127, ATTR_DEFAULT);
+    /* test unicode output */
+    for (int i=0x00A1; i<=0x00BF; i++) {
+        unsigned char buf[32];
+        int n = xwctomb((char *)buf, i);
+        if (n > 0) {
+            unsigned char *p = buf;
+            do {
+                console_textout(con, *p, ATTR_DEFAULT);
+                console_textout(con2, *p, ATTR_DEFAULT);
+                p++;
+            } while (--n > 0);
+        }
+    }
+#endif
 
     for (;;) {
         //Rect update = con->update;          /* save update rect for dup console */

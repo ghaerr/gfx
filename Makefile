@@ -21,32 +21,32 @@ all: gfx swarm kumppa
 	$(CC) -c $*.c
 
 fonts/cour_32.o: fonts/cour.ttf
-	python3 conv_ttf_to_c.py $^ 32 -bpp 1 -c 0x20-0x7e > $*.c
+	python3 conv_ttf_to_c.py $^ 32 -bpp 1 -c 0x20-0xff > $*.c
 	$(CC) -I. -c $*.c -o $*.o
 
 fonts/cour_32_tt.o: fonts/cour.ttf
-	python3 conv_ttf_to_c.py $^ 32 -bpp 8 -c 0x20-0x7e > $*.c
+	python3 conv_ttf_to_c.py $^ 32 -bpp 8 -c 0x20-0xff > $*.c
 	$(CC) -I. -c $*.c -o $*.o
 
 fonts/times_32.o: fonts/times.ttf
-	python3 conv_ttf_to_c.py $^ 32 -bpp 1 -c 0x20-0x7e > $*.c
+	python3 conv_ttf_to_c.py $^ 32 -bpp 1 -c 0x20-0xff > $*.c
 	$(CC) -I. -c $*.c -o $*.o
 
 fonts/times_32_tt.o: fonts/times.ttf
-	python3 conv_ttf_to_c.py $^ 32 -bpp 8 -c 0x20-0x7e > $*.c
+	python3 conv_ttf_to_c.py $^ 32 -bpp 8 -c 0x20-0xff > $*.c
 	$(CC) -I. -c $*.c -o $*.o
 
 fonts/lucida_32.o: fonts/lucida.ttf
-	python3 conv_ttf_to_c.py $^ 32 -bpp 1 -c 0x20-0x7e > $*.c
+	python3 conv_ttf_to_c.py $^ 32 -bpp 1 -c 0x20-0xff > $*.c
 	$(CC) -I. -c $*.c -o $*.o
 
 fonts/lucida_32_tt.o: fonts/lucida.ttf
-	python3 conv_ttf_to_c.py $^ 32 -bpp 8 -c 0x20-0x7e > $*.c
+	python3 conv_ttf_to_c.py $^ 32 -bpp 8 -c 0x20-0xff > $*.c
 	$(CC) -I. -c $*.c -o $*.o
 
 draw.o tmt.o: tmt.h
 
-draw: draw.o rom8x16.o $(GENFONTOBJS) tmt.o
+draw: draw.o rom8x16.o $(GENFONTOBJS) tmt.o mb.o
 	$(CC) -o $@ $^ $(LDLIBS)
 
 swarm: swarm.c x11.c draw.c rom8x16.c

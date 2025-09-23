@@ -77,9 +77,9 @@ struct TMT{
 
     bool decode_unicode; // Try to decode characters to ACS equivalents?
 
-    mbstate_t ms;
+    Mbstate_t ms;
     size_t nmb;
-    char mb[BUF_MAX + 1];
+    char mb[MB_LEN_MAX];
 
     char title[TITLE_MAX + 1];
     size_t ntitle;
@@ -698,18 +698,18 @@ writecharatcurs(TMT *vt, wchar_t w)
     else vt->XN = true;
 }
 
-static inline size_t
+static size_t
 testmbchar(TMT *vt)
 {
-    mbstate_t ts = vt->ms;
-    return vt->nmb? mbrtowc(NULL, vt->mb, vt->nmb, &ts) : (size_t)-2;
+    Mbstate_t ts = vt->ms;
+    return vt->nmb? xmbrtowc(NULL, vt->mb, vt->nmb, &ts) : (size_t)-2;
 }
 
-static inline wchar_t
+static wchar_t
 getmbchar(TMT *vt)
 {
     wchar_t c = 0;
-    size_t n = mbrtowc(&c, vt->mb, vt->nmb, &vt->ms);
+    size_t n = xmbrtowc(&c, vt->mb, vt->nmb, &vt->ms);
     vt->nmb = 0;
     return (n == (size_t)-1 || n == (size_t)-2)? TMT_INVALID_CHAR : c;
 }
@@ -725,17 +725,10 @@ tmt_write(TMT *vt, const char *s, size_t n)
             ;
         else if (vt->acs)
             writecharatcurs(vt, tacs(vt, (unsigned char)s[p]));
-        else if (vt->nmb >= BUF_MAX)
+        else
+            vt->mb[vt->nmb++] = s[p];
+        if (testmbchar(vt) != (size_t)-2 || vt->nmb >= MB_LEN_MAX)
             writecharatcurs(vt, getmbchar(vt));
-        else{
-            switch (testmbchar(vt)){
-                case (size_t)-1: writecharatcurs(vt, getmbchar(vt)); break;
-                case (size_t)-2: vt->mb[vt->nmb++] = s[p];           break;
-            }
-
-            if (testmbchar(vt) <= MB_LEN_MAX)
-                writecharatcurs(vt, getmbchar(vt));
-        }
     }
 
     notify(vt, vt->dirty, memcmp(&oc, &vt->curs, sizeof(oc)) != 0);
