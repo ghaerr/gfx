@@ -31,9 +31,8 @@
 #include <string.h>
 #include "tmt.h"
 
-#define BUF_MAX 100
 #define PAR_MAX 8
-#define TITLE_MAX 128
+#define TITLE_MAX 31
 #define TAB 8
 #define MAX(x, y) (((size_t)(x) > (size_t)(y)) ? (size_t)(x) : (size_t)(y))
 #define MIN(x, y) (((size_t)(x) < (size_t)(y)) ? (size_t)(x) : (size_t)(y))
@@ -58,9 +57,6 @@ struct TMT{
     TMTPOINT curs, oldcurs;
     TMTATTRS attrs, oldattrs;
 
-    // Name of the terminal for XTVERSION (if null, use default).
-    char * terminal_name;
-
     size_t minline;
     size_t maxline;
 
@@ -84,12 +80,15 @@ struct TMT{
     char title[TITLE_MAX + 1];
     size_t ntitle;
 
+    // Name of the terminal for XTVERSION (if null, use default).
+    char * terminal_name;
     size_t pars[PAR_MAX];
     size_t npar;
     size_t arg;
     bool q;
     enum {S_NUL, S_ESC, S_ARG, S_TITLE, S_TITLE_ARG, S_GT_ARG, S_LPAREN, S_RPAREN} state;
 };
+
 
 static TMTATTRS defattrs = {.fg = TMT_COLOR_DEFAULT, .bg = TMT_COLOR_DEFAULT};
 static void writecharatcurs(TMT *vt, wchar_t w);
@@ -299,8 +298,8 @@ HANDLER(rep)
 }
 
 HANDLER(dsr)
-    char r[BUF_MAX + 1] = {0};
-    snprintf(r, BUF_MAX, "\033[%zd;%zdR", c->r + 1, c->c + 1);
+    char r[32];
+    snprintf(r, sizeof(r), "\033[%d;%dR", (int)c->r + 1, (int)c->c + 1);
     CB(vt, TMT_MSG_ANSWER, (const char *)r);
 }
 
@@ -396,7 +395,7 @@ xtversion(TMT *vt)
     char * name = "tmt(0.0.0)";
     char * pre = "\033P>|";
     char * post = "\033\\";
-    char buf[255] = {0};
+    char buf[255];
     if (vt->terminal_name)
     {
         size_t tot_len = strlen(pre)+strlen(post)+strlen(vt->terminal_name)+1;
@@ -488,10 +487,10 @@ handlechar(TMT *vt, char i)
 
     if (vt->state == S_TITLE)
     {
-        if ( (i >= 32) && (vt->ntitle < TITLE_MAX) )
+        if (i >= ' ' && vt->ntitle < TITLE_MAX)
         {
             vt->title[vt->ntitle] = i;
-            vt->ntitle += 1;
+            vt->ntitle++;
             return true;
          }
     }
