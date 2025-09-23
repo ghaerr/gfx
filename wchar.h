@@ -5,9 +5,10 @@
  * library routines. The intent is to allow use on macOS, Linux and ELKS
  * without intefering with system library header files.
  */
+#include <stdlib.h>
 
 typedef int          wchar_t;       /* fairly compatible with macOS/Linux systems */
-typedef unsigned int Mbstate_t;     /* incompatible with mbstate_t on some systems */
+typedef uint32_t     Mbstate_t;     /* incompatible with mbstate_t on some systems */
 
 #undef MB_LEN_MAX
 #define MB_LEN_MAX  4

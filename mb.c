@@ -74,14 +74,14 @@ static const uint32_t bittab[] = {
 size_t xmbrtowc(wchar_t *restrict wc, const char *restrict src, size_t n,
     Mbstate_t *restrict st)
 {
-    static unsigned internal_state;
-    unsigned c;
+    static uint32_t internal_state;
+    uint32_t c;
     const unsigned char *s = (const void *)src;
     const size_t N = n;
     wchar_t dummy;
 
     if (!st) st = (void *)&internal_state;
-    c = *(unsigned *)st;
+    c = *(uint32_t *)st;
 
     if (!s) {
         if (c) goto ilseq;
@@ -101,7 +101,7 @@ size_t xmbrtowc(wchar_t *restrict wc, const char *restrict src, size_t n,
 loop:
         c = c<<6 | *s++-0x80; n--;
         if (!(c&(1U<<31))) {
-            *(unsigned *)st = 0;
+            *(uint32_t *)st = 0;
             *wc = c;
             return N-n;
         }
@@ -111,10 +111,10 @@ loop:
         }
     }
 
-    *(unsigned *)st = c;
+    *(uint32_t *)st = c;
     return -2;
 ilseq:
-    *(unsigned *)st = 0;
+    *(uint32_t *)st = 0;
     errno = EILSEQ;
     return -1;
 }
@@ -141,7 +141,7 @@ size_t xwcrtomb(char *restrict s, wchar_t wc, Mbstate_t *restrict st)
                 *s++ = 0x80 | ((wc>>6)&0x3f);
                 *s = 0x80 | (wc&0x3f);
                 return 3;
-        } else if ((unsigned)wc-0x10000UL < 0x100000UL) {
+        } else if ((uint32_t)wc-0x10000UL < 0x100000UL) {
                 *s++ = 0xf0 | (wc>>18);
                 *s++ = 0x80 | ((wc>>12)&0x3f);
                 *s++ = 0x80 | ((wc>>6)&0x3f);
