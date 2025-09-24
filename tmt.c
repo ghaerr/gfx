@@ -732,8 +732,10 @@ tmt_reset(TMT *vt)
     vt->curs.r = vt->curs.c = vt->curs.hidden = 0;
     vt->oldcurs.r = vt->oldcurs.c = vt->oldcurs.hidden = 0;
     vt->acs = vt->XN = 0;
-    resetparser(vt);
+    vt->minline = 0;
+    vt->maxline = vt->screen.nline-1;
     vt->attrs = vt->oldattrs = defattrs;
+    resetparser(vt);
     memset(&vt->ms, 0, sizeof(vt->ms));
     clearlines(vt, 0, vt->screen.nline);
     CB(vt, TMT_MSG_CURSOR, "t");
