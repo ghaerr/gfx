@@ -43,7 +43,6 @@
 #define P0(x) (vt->pars[x])
 #define P1(x) (vt->pars[x]? vt->pars[x] : 1)
 #define CB(vt, m, a) ((vt)->cb? (vt)->cb(m, vt, a, (vt)->p) : (void)0)
-#define INESC ((vt)->state)
 
 #define COMMON_VARS             \
     TMTSCREEN *s = &vt->screen; \
@@ -98,7 +97,7 @@ tmt_set_unicode_decode(TMT *vt, bool v)
 }
 
 static wchar_t
-tacs(const TMT *vt, unsigned char c)
+tacs(const TMT *vt, unsigned int c)
 {
     /* The terminfo alternate character set for ANSI. */
     static unsigned char map[] = {0020U, 0021U, 0030U, 0031U, 0333U, 0004U,
@@ -107,8 +106,9 @@ tacs(const TMT *vt, unsigned char c)
                                   0304U, 0137U, 0303U, 0264U, 0301U, 0302U,
                                   0263U, 0363U, 0362U, 0343U, 0330U, 0234U,
                                   0376U};
-    for (size_t i = 0; i < sizeof(map); i++) if (map[i] == c)
-        return vt->acschars[i];
+    for (size_t i = 0; i < sizeof(map); i++)
+        if (map[i] == c)
+            return vt->acschars[i];
     return (wchar_t)c;
 }
 
@@ -388,7 +388,7 @@ margin(TMT *vt, size_t top, size_t bot)
 }
 
 static bool
-handlechar(TMT *vt, char i)
+handlechar(TMT *vt, unsigned int i)
 {
     COMMON_VARS;
     char cs[2];
@@ -694,10 +694,10 @@ tmt_write(TMT *vt, const char *s, size_t n)
     n = n? n : strlen(s);
 
     for (size_t p = 0; p < n; p++){
-        if (handlechar(vt, s[p]))
+        if (handlechar(vt, s[p] & 255))
             ;
         else if (vt->acs)
-            writecharatcurs(vt, tacs(vt, (unsigned char)s[p]));
+            writecharatcurs(vt, tacs(vt, s[p] & 255));
         else
             vt->mb[vt->nmb++] = s[p];
         if (testmbchar(vt) != (size_t)-2 || vt->nmb >= MB_LEN_MAX)
