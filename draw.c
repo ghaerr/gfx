@@ -771,6 +771,7 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
         const TMTPOINT *cursor = tmt_cursor(con->vt);
         con->curx = cursor->c;
         con->cury = cursor->r;
+        if (!cursor->hidden)
 #endif
         draw_font_char(dp, con->font, '_', x, y,
             con->curx * con->char_width, con->cury * con->char_height, fg, bg, 0, angle);
@@ -899,9 +900,7 @@ Font *console_load_font(struct console *con, char *path)
     return font;
 }
 
-static void callback(tmt_msg_t m, TMT *vt, const void *a, void *p)
-{
-}
+//static void callback(tmt_msg_t m, TMT *vt, const void *a, void *p) {}
 
 struct console *create_console(int width, int height)
 {
@@ -917,7 +916,7 @@ struct console *create_console(int width, int height)
 
     memset(con, 0, sizeof(struct console));
 #if !OLDWAY
-    con->vt = tmt_open(height, width, callback, NULL, NULL);
+    con->vt = tmt_open(height, width, NULL, NULL, NULL);
     if (!con->vt) return 0;
     update_dirty_region(con, 0, 0, width, height);
 #endif

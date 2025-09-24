@@ -54,15 +54,17 @@
 #define HANDLER(name) static void name (TMT *vt) { COMMON_VARS;
 
 struct TMT{
+    enum {S_NUL, S_ESC, S_ARG, S_TITLE, S_TITLE_ARG, S_GT_ARG, S_LPAREN, S_RPAREN} state;
+
+    bool dirty, acs, ignored, XN, q;
+    bool decode_unicode;                // Try to decode characters to ACS equivalents?
+
+    TMTSCREEN screen;
     TMTPOINT curs, oldcurs;
     TMTATTRS attrs, oldattrs;
-
+    TMTLINE *tabs;
     size_t minline;
     size_t maxline;
-
-    bool dirty, acs, ignored, XN;
-    TMTSCREEN screen;
-    TMTLINE *tabs;
 
     TMTCALLBACK cb;
     void *p;
@@ -71,8 +73,6 @@ struct TMT{
     int charset;  // Are we in G0 or G1?
     int xlate[2]; // What's in the charset?  0=ASCII, 1=DEC Special Graphics
 
-    bool decode_unicode; // Try to decode characters to ACS equivalents?
-
     Mbstate_t ms;
     size_t nmb;
     char mb[MB_LEN_MAX];
@@ -80,13 +80,9 @@ struct TMT{
     char title[TITLE_MAX + 1];
     size_t ntitle;
 
-    // Name of the terminal for XTVERSION (if null, use default).
-    char * terminal_name;
     size_t pars[PAR_MAX];
     size_t npar;
     size_t arg;
-    bool q;
-    enum {S_NUL, S_ESC, S_ARG, S_TITLE, S_TITLE_ARG, S_GT_ARG, S_LPAREN, S_RPAREN} state;
 };
 
 
@@ -322,7 +318,11 @@ HANDLER(fixcursor)
 HANDLER(sm)
     switch (P0(0)){
         case 25:
-            CB(vt, TMT_MSG_CURSOR, "t");
+            if (vt->q)
+            {
+                vt->curs.hidden = false;
+                CB(vt, TMT_MSG_CURSOR, "t");
+            }
             break;
         default:
             for (int i = vt->npar; i < PAR_MAX; ++i)
@@ -335,7 +335,11 @@ HANDLER(sm)
 HANDLER(rm)
     switch (P0(0)){
         case 25:
-            CB(vt, TMT_MSG_CURSOR, "f");
+            if (vt->q)
+            {
+                vt->curs.hidden = true;
+                CB(vt, TMT_MSG_CURSOR, "f");
+            }
             break;
         default:
             for (int i = vt->npar; i < PAR_MAX; ++i)
@@ -389,25 +393,6 @@ margin(TMT *vt, size_t top, size_t bot)
     vt->maxline = bot;
 }
 
-static void
-xtversion(TMT *vt)
-{
-    char * name = "tmt(0.0.0)";
-    char * pre = "\033P>|";
-    char * post = "\033\\";
-    char buf[255];
-    if (vt->terminal_name)
-    {
-        size_t tot_len = strlen(pre)+strlen(post)+strlen(vt->terminal_name)+1;
-        if (tot_len <= sizeof(buf))
-            name = vt->terminal_name;
-    }
-    strcpy(buf, pre);
-    strcat(buf, name);
-    strcat(buf, post);
-    CB(vt, TMT_MSG_ANSWER, buf);
-}
-
 static bool
 handlechar(TMT *vt, char i)
 {
@@ -437,12 +422,15 @@ handlechar(TMT *vt, char i)
     DO(S_ESC, "M",          reverse_nl(vt))
     ON(S_ESC, "[",          vt->state = S_ARG)
     ON(S_ESC, "]",          vt->state = S_TITLE_ARG)
+    ON(S_ESC, "(",          vt->state = S_LPAREN)
+    ON(S_ESC, ")",          vt->state = S_RPAREN)
     ON(S_ARG, "\x1b",       vt->state = S_ESC)
     ON(S_ARG, ";",          consumearg(vt))
     ON(S_ARG, "?",          vt->q = 1)
     ON(S_ARG, "0123456789", vt->arg = vt->arg * 10 + atoi(cs))
     ON(S_TITLE_ARG, "012",  vt->arg = vt->arg * 10 + atoi(cs))
     ON(S_TITLE_ARG, ";",    consumearg(vt); vt->state = S_TITLE)
+    DO(S_ARG, "@",          ich(vt))
     DO(S_ARG, "A",          c->r = MAX(c->r - P1(0), 0))
     DO(S_ARG, "B",          c->r = MIN(c->r + P1(0), s->nline - 1))
     DO(S_ARG, "C",          c->c = MIN(c->c + P1(0), s->ncol - 1))
@@ -468,18 +456,15 @@ handlechar(TMT *vt, char i)
     DO(S_ARG, "g",          if (P0(0) == 3) clearline(vt, vt->tabs, 0, s->ncol))
     DO(S_ARG, "m",          sgr(vt))
     DO(S_ARG, "n",          if (P0(0) == 6) dsr(vt))
-    DO(S_ARG, "h",          sm(vt)) // Handles both ?h and plain h
-    DO(S_ARG, "l",          rm(vt)) // Handles both ?l and plain l
+    DO(S_ARG, "h",          sm(vt))
+    DO(S_ARG, "l",          rm(vt))
     DO(S_ARG, "i",          (void)0)
     DO(S_ARG, "s",          vt->oldcurs = vt->curs; vt->oldattrs = vt->attrs)
     DO(S_ARG, "u",          vt->curs = vt->oldcurs; vt->attrs = vt->oldattrs)
     ON(S_ARG, ">",          vt->state = S_GT_ARG)
-    DO(S_GT_ARG, "c",       CB(vt, TMT_MSG_ANSWER, "\033[>0;95c")) // Send Secondary DA (0=VT100, 95=old xterm)
-    DO(S_GT_ARG, "q",       xtversion(vt))
-    DO(S_TITLE, "\a",       title(vt))
-    DO(S_ARG, "@",          ich(vt))
-    ON(S_ESC, "(",          vt->state = S_LPAREN)
-    ON(S_ESC, ")",          vt->state = S_RPAREN)
+    DO(S_GT_ARG, "c",       CB(vt, TMT_MSG_ANSWER, "\033[>0;95c")) // VT100;xterm
+    DO(S_GT_ARG, "q",       CB(vt, TMT_MSG_ANSWER, "\033P>|" "XTerm(354)" "\033\\"))
+    DO(S_TITLE, "\x07",     title(vt))
     DO(S_LPAREN, "AB12",    vt->xlate[0] = 0)
     DO(S_LPAREN, "0",       vt->xlate[0] = 1)
     DO(S_RPAREN, "AB12",    vt->xlate[1] = 0)
@@ -755,7 +740,9 @@ tmt_clean(TMT *vt)
 void
 tmt_reset(TMT *vt)
 {
-    vt->curs.r = vt->curs.c = vt->oldcurs.r = vt->oldcurs.c = vt->acs = vt->XN = 0;
+    vt->curs.r = vt->curs.c = vt->curs.hidden = 0;
+    vt->oldcurs.r = vt->oldcurs.c = vt->oldcurs.hidden = 0;
+    vt->acs = vt->XN = 0;
     resetparser(vt);
     vt->attrs = vt->oldattrs = defattrs;
     memset(&vt->ms, 0, sizeof(vt->ms));
