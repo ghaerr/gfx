@@ -350,14 +350,8 @@ HANDLER(rm)
 }
 
 HANDLER(title)
-    vt->title[vt->ntitle] = 0;
-    if (vt->npar >= 1)
-    {
-        if (vt->pars[0] == 0 || vt->pars[0] == 2)
-        {
-            CB(vt, TMT_MSG_TITLE, vt->title);
-        }
-    }
+    if (vt->npar >= 1 && (P0(0) == 0 || P0(0) == 2))
+        CB(vt, TMT_MSG_TITLE, vt->title);
 }
 
 static void
@@ -397,8 +391,8 @@ static bool
 handlechar(TMT *vt, char i)
 {
     COMMON_VARS;
+    char cs[2];
 
-    char cs[] = {i, 0};
     #define ON(S, C, A) if (vt->state == (S) && strchr(C, i)){ A; return true;}
     #define DO(S, C, A) ON(S, C, consumearg(vt); if (!vt->ignored) {A;} \
                                  fixcursor(vt); resetparser(vt););
@@ -414,21 +408,21 @@ handlechar(TMT *vt, char i)
     ON(S_ESC, "\x1b",       vt->state = S_ESC)
     DO(S_ESC, "=",          (void)0) // DECKPAM (application keypad)
     DO(S_ESC, ">",          (void)0) // DECKPNM (normal keypad)
-    DO(S_ESC, "H",          t[c->c].c = L'*')
-    DO(S_ESC, "7",          vt->oldcurs = vt->curs; vt->oldattrs = vt->attrs)
-    DO(S_ESC, "8",          vt->curs = vt->oldcurs; vt->attrs = vt->oldattrs)
     ON(S_ESC, "+*",         vt->ignored = true; vt->state = S_ARG)
-    DO(S_ESC, "c",          tmt_reset(vt))
-    DO(S_ESC, "M",          reverse_nl(vt))
     ON(S_ESC, "[",          vt->state = S_ARG)
     ON(S_ESC, "]",          vt->state = S_TITLE_ARG)
     ON(S_ESC, "(",          vt->state = S_LPAREN)
     ON(S_ESC, ")",          vt->state = S_RPAREN)
+    DO(S_ESC, "7",          vt->oldcurs = vt->curs; vt->oldattrs = vt->attrs)
+    DO(S_ESC, "8",          vt->curs = vt->oldcurs; vt->attrs = vt->oldattrs)
+    DO(S_ESC, "c",          tmt_reset(vt))
+    DO(S_ESC, "H",          t[c->c].c = L'*')
+    DO(S_ESC, "M",          reverse_nl(vt))
     ON(S_ARG, "\x1b",       vt->state = S_ESC)
     ON(S_ARG, ";",          consumearg(vt))
     ON(S_ARG, "?",          vt->q = 1)
-    ON(S_ARG, "0123456789", vt->arg = vt->arg * 10 + atoi(cs))
-    ON(S_TITLE_ARG, "012",  vt->arg = vt->arg * 10 + atoi(cs))
+    ON(S_ARG, "0123456789", cs[0] = i; cs[1] = '\0'; vt->arg = vt->arg * 10 + atoi(cs))
+    ON(S_TITLE_ARG, "012",  cs[0] = i; cs[1] = '\0'; vt->arg = vt->arg * 10 + atoi(cs))
     ON(S_TITLE_ARG, ";",    consumearg(vt); vt->state = S_TITLE)
     DO(S_ARG, "@",          ich(vt))
     DO(S_ARG, "A",          c->r = MAX(c->r - P1(0), 0))
@@ -454,30 +448,25 @@ handlechar(TMT *vt, char i)
     DO(S_ARG, "b",          rep(vt));
     DO(S_ARG, "c",          if (!vt->q) CB(vt, TMT_MSG_ANSWER, "\033[?6c"))
     DO(S_ARG, "g",          if (P0(0) == 3) clearline(vt, vt->tabs, 0, s->ncol))
+    DO(S_ARG, "h",          sm(vt))
+    DO(S_ARG, "i",          (void)0)
+    DO(S_ARG, "l",          rm(vt))
     DO(S_ARG, "m",          sgr(vt))
     DO(S_ARG, "n",          if (P0(0) == 6) dsr(vt))
-    DO(S_ARG, "h",          sm(vt))
-    DO(S_ARG, "l",          rm(vt))
-    DO(S_ARG, "i",          (void)0)
     DO(S_ARG, "s",          vt->oldcurs = vt->curs; vt->oldattrs = vt->attrs)
     DO(S_ARG, "u",          vt->curs = vt->oldcurs; vt->attrs = vt->oldattrs)
     ON(S_ARG, ">",          vt->state = S_GT_ARG)
     DO(S_GT_ARG, "c",       CB(vt, TMT_MSG_ANSWER, "\033[>0;95c")) // VT100;xterm
     DO(S_GT_ARG, "q",       CB(vt, TMT_MSG_ANSWER, "\033P>|" "XTerm(354)" "\033\\"))
-    DO(S_TITLE, "\x07",     title(vt))
+    DO(S_TITLE, "\x07",     vt->title[vt->ntitle] = '\0'; title(vt))
     DO(S_LPAREN, "AB12",    vt->xlate[0] = 0)
     DO(S_LPAREN, "0",       vt->xlate[0] = 1)
     DO(S_RPAREN, "AB12",    vt->xlate[1] = 0)
     DO(S_RPAREN, "0",       vt->xlate[1] = 1)
-
-    if (vt->state == S_TITLE)
+    if (vt->state == S_TITLE && (i >= ' ' && vt->ntitle < TITLE_MAX))
     {
-        if (i >= ' ' && vt->ntitle < TITLE_MAX)
-        {
-            vt->title[vt->ntitle] = i;
-            vt->ntitle++;
-            return true;
-         }
+        vt->title[vt->ntitle++] = i;
+        return true;
     }
 
     return resetparser(vt), false;
