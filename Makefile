@@ -5,7 +5,7 @@ CFLAGS += -Wno-unused-variable -O3
 LDLIBS += -lSDL2
 
 # generated font files
-GENFONTSRCS = fonts/cour_32.c fonts/cour_32_tt.c
+GENFONTSRCS = fonts/cour_32.c fonts/cour_32_tt.c fonts/cour_16_tt.c
 #GENFONTSRCS += fonts/times_32.c
 GENFONTSRCS += fonts/times_32_tt.c
 #GENFONTSRCS += fonts/lucida_32.c fonts/lucida_32_tt.c
@@ -28,6 +28,10 @@ fonts/cour_32_tt.o: fonts/cour.ttf
 	python3 conv_ttf_to_c.py $^ 32 -bpp 8 -c 0x20-0xff > $*.c
 	$(CC) -I. -c $*.c -o $*.o
 
+fonts/cour_16_tt.o: fonts/cour.ttf
+	python3 conv_ttf_to_c.py $^ 16 -bpp 8 -c 0x20-0x25ff > $*.c
+	$(CC) -I. -c $*.c -o $*.o
+
 fonts/times_32.o: fonts/times.ttf
 	python3 conv_ttf_to_c.py $^ 32 -bpp 1 -c 0x20-0xff > $*.c
 	$(CC) -I. -c $*.c -o $*.o
@@ -46,7 +50,7 @@ fonts/lucida_32_tt.o: fonts/lucida.ttf
 
 draw.o tmt.o: tmt.h
 
-draw: draw.o rom8x16.o $(GENFONTOBJS) tmt.o mb.o
+draw: draw.o rom8x16.o $(GENFONTOBJS) tmt.o mb.o openpty.o
 	$(CC) -o $@ $^ $(LDLIBS)
 
 swarm: swarm.c x11.c draw.c rom8x16.c

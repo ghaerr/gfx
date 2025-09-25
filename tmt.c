@@ -671,26 +671,25 @@ writecharatcurs(TMT *vt, wchar_t w)
     else vt->XN = true;
 }
 
-static size_t
-testmbchar(TMT *vt)
-{
-    Mbstate_t ts = vt->ms;
-    return vt->nmb? xmbrtowc(NULL, vt->mb, vt->nmb, &ts) : (size_t)-2;
-}
-
 static wchar_t
 getmbchar(TMT *vt)
 {
-    wchar_t c = 0;
-    size_t n = xmbrtowc(&c, vt->mb, vt->nmb, &vt->ms);
+    wchar_t wc = TMT_INVALID_CHAR;
+
+    if (!vt->nmb) return -1;
+    if (vt->nmb < MB_LEN_MAX) {
+        if (xmbrtowc(&wc, &vt->mb[vt->nmb-1], 1, &vt->ms) == (size_t)-2)
+            return -2;
+    }
     vt->nmb = 0;
-    return (n == (size_t)-1 || n == (size_t)-2)? TMT_INVALID_CHAR : c;
+    return wc;
 }
 
 void
 tmt_write(TMT *vt, const char *s, size_t n)
 {
     TMTPOINT oc = vt->curs;
+    wchar_t wc;
     n = n? n : strlen(s);
 
     for (size_t p = 0; p < n; p++){
@@ -699,9 +698,12 @@ tmt_write(TMT *vt, const char *s, size_t n)
         else if (vt->acs)
             writecharatcurs(vt, tacs(vt, s[p] & 255));
         else
+        {
             vt->mb[vt->nmb++] = s[p];
-        if (testmbchar(vt) != (size_t)-2 || vt->nmb >= MB_LEN_MAX)
-            writecharatcurs(vt, getmbchar(vt));
+            wc = getmbchar(vt);
+            if (wc != -2 && wc != -1)
+                writecharatcurs(vt, wc);
+        }
     }
 
     notify(vt, vt->dirty, memcmp(&oc, &vt->curs, sizeof(oc)) != 0);

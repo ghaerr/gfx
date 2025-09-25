@@ -620,7 +620,7 @@ static void clear_screen(Drawable *dp)
 {
     draw_clear(dp);
     if (dp->font) {
-        draw_font_string(dp, dp->font, "Use '-' or '=' to rotate text", 20, 20,
+        draw_font_string(dp, dp->font, "Use '[' or ']' to rotate text", 20, 20,
             0, 0, dp->fgcolor, dp->bgcolor, 1, 0);
     }
 }
@@ -628,17 +628,6 @@ static void clear_screen(Drawable *dp)
 /* output character at cursor location*/
 void console_textout(struct console *con, int c, int attr)
 {
-    switch (c) {
-    case '\0':  return;
-    //case '-':   scrolldn(con, 0, con->lines-1, ATTR_DEFAULT); return;   //FIXME
-    //case '=':   scrollup(con, 0, con->lines-1, ATTR_DEFAULT); return;   //FIXME
-    case '-':   angle--;
-    same:
-                clear_screen(con->dp);
-                update_dirty_region(con, 0, 0, con->cols, con->lines);
-                return;
-    case '=':   angle++; goto same;
-    }
 #if !OLDWAY
     char buf[2];
     buf[0] = c;
@@ -791,6 +780,7 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 
 extern Font font_rom8x16;
 extern Font font_cour_32;
+extern Font font_cour_16_tt;
 extern Font font_cour_32_tt;
 extern Font font_times_32;
 extern Font font_times_32_tt;
@@ -802,6 +792,7 @@ static Font *fonts[] = {
 #ifndef NOMAIN
     &font_cour_32,
     &font_cour_32_tt,
+    &font_cour_16_tt,
     //&font_times_32,
     &font_times_32_tt,
     //&font_lucida_32,
@@ -1450,19 +1441,34 @@ void draw_blit(Drawable *td, int dst_x, int dst_y, int width, int height,
     }
 }
 
+#include <sys/select.h>
+int open_pty(void);
+static int term_fd;
+
 static int sdl_nextevent(struct console *con, struct console *con2)
 {
     int c;
     SDL_Event event;
 
-    while (SDL_WaitEvent(&event)) {
+    //while (SDL_WaitEvent(&event)) {
+    while (SDL_PollEvent(&event)) {
         switch (event.type) {
             case SDL_QUIT:
                 return 1;
 
             case SDL_KEYDOWN:
                 c = sdl_key(event.key.state, event.key.keysym);
-                if (c == 'q') return 1;     //FIXME
+                switch (c) {
+                case '\0':  return 0;
+                case '~':   return 1;
+                case '[':   angle--;
+                same:
+                            clear_screen(con->dp);
+                            update_dirty_region(con, 0, 0, con->cols, con->lines);
+                            return 0;
+                case ']':   angle++; goto same;
+                }
+#if 0
                 if (c == '\r') {
                     console_textout(con, c, ATTR_DEFAULT);
                     console_textout(con2, c, ATTR_DEFAULT);
@@ -1471,6 +1477,31 @@ static int sdl_nextevent(struct console *con, struct console *con2)
                 console_textout(con, c, ATTR_DEFAULT);
                 console_textout(con2, c, ATTR_DEFAULT);
                 return 0;
+#else
+                char c2 = c;
+                write(term_fd, &c2, 1);
+#endif
+        }
+    }
+    fd_set fdset;
+    struct timeval tv;
+    int ret;
+    char buf[256];
+
+    FD_ZERO(&fdset);
+    FD_SET(term_fd, &fdset);
+    tv.tv_sec = 0;
+    tv.tv_usec = 10000;
+    ret = select(term_fd + 1, &fdset, NULL, NULL, &tv);
+    if (ret > 0) {
+        if (FD_ISSET(term_fd, &fdset)) {
+            int n = read(term_fd, buf, sizeof(buf));
+            if (n > 0) {
+                char *p = buf;
+                do {
+                    console_textout(con, *p++ & 255, ATTR_DEFAULT);
+                } while (--n);
+            }
         }
     }
 
@@ -1484,20 +1515,26 @@ int main(int ac, char **av)
     struct sdl_window *sdl;
 
     if (!sdl_init()) exit(1);
-    if (!(dp = create_drawable(MWPF_DEFAULT, 640, 400))) exit(2);
+    //if (!(dp = create_drawable(MWPF_DEFAULT, 640, 400))) exit(2);
+    if (!(dp = create_drawable(MWPF_DEFAULT, 1024, 800))) exit(2);
     if (!(sdl = sdl_create_window(dp))) exit(3);
 
 #if 1
+    term_fd = open_pty();
     struct console *con;
-    struct console *con2;
+    struct console *con2 = NULL;
     dp->font = font_load_font("times_32_tt");
-    if (!(con = create_console(14, 8))) exit(4);
-    console_load_font(con, "cour_32_tt");
+    if (!(con = create_console(80, 24))) exit(4);
+    //console_load_font(con, "cour_32_tt");
+    //console_load_font(con, "cour_16_tt");
     //console_load_font(con, "cour_32");
-    //console_load_font(con, "DOSJ-437.F19");
-    if (!(con2 = create_console(14, 8))) exit(4);
-    con2->dp = dp;
-    console_load_font(con2, "cour_32");
+    console_load_font(con, "DOSJ-437.F19");
+    if (0x25C6 - con->font->firstchar >= con->font->size)
+        tmt_set_unicode_decode(con->vt, true);
+
+    //if (!(con2 = create_console(14, 8))) exit(4);
+    //con2->dp = dp;
+    //console_load_font(con2, "cour_32");
     //console_load_font(con2, "cour_32_tt");
     //console_load_font(con2, "DOSJ-437.F19");
     clear_screen(dp);
@@ -1505,32 +1542,33 @@ int main(int ac, char **av)
 
 #if 2
     /* test invalid UTF-8 */
-    console_textout(con, 0xc0, ATTR_DEFAULT);
-    console_textout(con2, 0xc1, ATTR_DEFAULT);
+    //console_textout(con, 0xc0, ATTR_DEFAULT);
+    //console_textout(con2, 0xc1, ATTR_DEFAULT);
     /* test undefined glyph */
     //console_textout(con, 127, ATTR_DEFAULT);
     //console_textout(con2, 127, ATTR_DEFAULT);
     /* test unicode output */
-    for (int i=0x00A1; i<=0x00BF; i++) {
+    for (int i=0x00A1; i<=0x00AF; i++) {
         unsigned char buf[32];
         int n = xwctomb((char *)buf, i);
         if (n > 0) {
             unsigned char *p = buf;
             do {
                 console_textout(con, *p, ATTR_DEFAULT);
-                console_textout(con2, *p, ATTR_DEFAULT);
+                //console_textout(con2, *p, ATTR_DEFAULT);
                 p++;
             } while (--n > 0);
         }
     }
 #endif
 
+    write(term_fd, "TERM=ansi\n", 10);
     for (;;) {
         //Rect update = con->update;          /* save update rect for dup console */
         int flush = angle? 2: 0;
         draw_console(con, dp, 3*8, 5*15, flush);
         //con->update = update;
-        draw_console(con2, dp, 42*8, 5*15, flush);
+        //draw_console(con2, dp, 42*8, 5*15, flush);
         draw_flush(dp);
         if (sdl_nextevent(con, con2))
             break;
