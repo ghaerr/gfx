@@ -1521,7 +1521,7 @@ static int sdl_nextevent(struct console *con, struct console *con2)
     FD_ZERO(&fdset);
     FD_SET(term_fd, &fdset);
     tv.tv_sec = 0;
-    tv.tv_usec = 10000;
+    tv.tv_usec = 30000;
     ret = select(term_fd + 1, &fdset, NULL, NULL, &tv);
     if (ret > 0) {
         if (FD_ISSET(term_fd, &fdset)) {

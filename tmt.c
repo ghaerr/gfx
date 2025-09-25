@@ -402,8 +402,8 @@ handlechar(TMT *vt, unsigned int i)
     DO(S_NUL, "\x09",       while (++c->c < s->ncol - 1 && t[c->c].c != L'*'))
     DO(S_NUL, "\x0a",       nl(vt))
     DO(S_NUL, "\x0d",       vt->XN = false; c->c = 0)
-    DO(S_NUL, "\x0e",       vt->charset = 1) // Shift Out (Switch to G1)
-    DO(S_NUL, "\x0f",       vt->charset = 0) // Shift In  (Switch to G0)
+    DO(S_NUL, "\x0e",       vt->charset = 1) // ^N Shift Out (Switch to G1)
+    DO(S_NUL, "\x0f",       vt->charset = 0) // ^O Shift In  (Switch to G0)
     ON(S_NUL, "\x1b",       vt->state = S_ESC)
     ON(S_ESC, "\x1b",       vt->state = S_ESC)
     DO(S_ESC, "=",          (void)0) // DECKPAM (application keypad)
@@ -577,12 +577,12 @@ dec_to_acs(TMT *vt, wchar_t w)
     // Specifically: Tab FormFeed CR LF NL VTab
     // 0xfa is hopefully an interpunct.
 
-    /**/ if (w == '_'            ) w = ' '; // NBSP
-    else if (w >= '`' && w <= 'a') w = vt->acschars[w - '`' +  5];
-    else if (w >= 'b' && w <= 'e') w = "TFCL"[w - 'b'];
-    else if (w >= 'f' && w <= 'g') w = vt->acschars[w - 'f' +  7];
-    else if (w >= 'h' && w <= 'i') w = "NV"[w - 'h'];
-    else if (w >= 'j' && w <= '~') w = vt->acschars[w - 'j' + 10];
+         if (w == '_'            ) w = ' ';                         // 0x5F NBSP
+    else if (w >= '`' && w <= 'a') w = vt->acschars[w - '`' +  5];  // 0x60-61
+    else if (w >= 'b' && w <= 'e') w = "TFCL"[w - 'b'];             // 0x62-65
+    else if (w >= 'f' && w <= 'g') w = vt->acschars[w - 'f' +  7];  // 0x66-67
+    else if (w >= 'h' && w <= 'i') w = "NV"[w - 'h'];               // 0x68-69
+    else if (w >= 'j' && w <= '~') w = vt->acschars[w - 'j' + 10];  // 0x6a-7e
 
     return w;
 }
@@ -618,7 +618,7 @@ writecharatcurs(TMT *vt, wchar_t w)
         case 0x2588: w = vt->acschars[4]; break; // BLOCK
         case 0x25A6: w = vt->acschars[9]; break; // BOARD
         case 0x00A0: w = dec_to_acs(vt, 0x5f); break; // NBSP
-        case 0x2666: // BLACK DIAMOND SUIT
+        case 0x2666:                                  // BLACK DIAMOND SUIT
         case 0x25C6: w = dec_to_acs(vt, 0x60); break; // BLACK DIAMOND
         case 0x2592: w = dec_to_acs(vt, 0x61); break; // MEDIUM SHADE
         case 0x2409: w = dec_to_acs(vt, 0x62); break; // SYMBOL FOR HORIZONTAL TABULATION
