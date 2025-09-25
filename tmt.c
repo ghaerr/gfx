@@ -106,9 +106,10 @@ tacs(const TMT *vt, unsigned int c)
                                   0304U, 0137U, 0303U, 0264U, 0301U, 0302U,
                                   0263U, 0363U, 0362U, 0343U, 0330U, 0234U,
                                   0376U};
-    for (size_t i = 0; i < sizeof(map); i++)
+    for (size_t i = 0; i < sizeof(map); i++) {
         if (map[i] == c)
             return vt->acschars[i];
+    }
     return (wchar_t)c;
 }
 
@@ -145,12 +146,9 @@ scrup(TMT *vt, size_t r, ssize_t n)
 
     if (n>0){
         TMTLINE *buf[n];
-        if (r == 0)
-        {
+        if (r == 0) {
             for (int i = 0; i < n; ++i)
-            {
                 CB(vt, TMT_MSG_SCROLL, &vt->screen.lines[i]->chars);
-            }
         }
 
         memcpy(buf, vt->screen.lines + r, n * sizeof(TMTLINE *));
@@ -236,7 +234,8 @@ HANDLER(el)
 }
 
 HANDLER(sgr)
-    for (size_t i = 0; i < vt->npar; i++) switch (P0(i)){
+    for (size_t i = 0; i < vt->npar; i++)
+        switch (P0(i)) {
         case  0: vt->attrs                    = defattrs;   break;
         case  1: case 22: vt->attrs.bold      = P0(i) < 20; break;
         case  2: case 23: vt->attrs.dim       = P0(i) < 20; break;
@@ -318,8 +317,7 @@ HANDLER(fixcursor)
 HANDLER(sm)
     switch (P0(0)){
         case 25:
-            if (vt->q)
-            {
+            if (vt->q) {
                 vt->curs.hidden = false;
                 CB(vt, TMT_MSG_CURSOR, "t");
             }
@@ -335,8 +333,7 @@ HANDLER(sm)
 HANDLER(rm)
     switch (P0(0)){
         case 25:
-            if (vt->q)
-            {
+            if (vt->q) {
                 vt->curs.hidden = true;
                 CB(vt, TMT_MSG_CURSOR, "f");
             }
@@ -463,8 +460,7 @@ handlechar(TMT *vt, unsigned int i)
     DO(S_LPAREN, "0",       vt->xlate[0] = 1)
     DO(S_RPAREN, "AB12",    vt->xlate[1] = 0)
     DO(S_RPAREN, "0",       vt->xlate[1] = 1)
-    if (vt->state == S_TITLE && (i >= ' ' && vt->ntitle < TITLE_MAX))
-    {
+    if (vt->state == S_TITLE && (i >= ' ' && vt->ntitle < TITLE_MAX)) {
         vt->title[vt->ntitle++] = i;
         return true;
     }
@@ -513,8 +509,6 @@ tmt_open(size_t nline, size_t ncol, TMTCALLBACK cb, void *p,
     vt->attrs = vt->oldattrs = defattrs;
 
     if (!tmt_resize(vt, nline, ncol)) return tmt_close(vt), NULL;
-    printf("TMTATTRS %lu\n", sizeof(struct TMTATTRS));
-    printf("TMTCHAR %lu\n", sizeof(struct TMTCHAR));
     return vt;
 }
 
@@ -572,7 +566,6 @@ static wchar_t
 dec_to_acs(TMT *vt, wchar_t w)
 {
     // Translates from DEC Special Graphics to our ACS characters.
-
     // The capital letters are supposed to be symbols for control chars.
     // Specifically: Tab FormFeed CR LF NL VTab
     // 0xfa is hopefully an interpunct.
@@ -592,25 +585,21 @@ writecharatcurs(TMT *vt, wchar_t w)
 {
     COMMON_VARS;
 
-    if (vt->XN)
-    {
+    if (vt->XN) {
         vt->XN = false;
         c->c = 0;
         c->r++;
-        if (c->r > vt->maxline)
-        {
+        if (c->r > vt->maxline) {
             scrup(vt, SCR_DEF, 1);
             c->r = vt->maxline;
         }
     }
 
-    if (vt->decode_unicode)
-    {
+    if (vt->decode_unicode) {
         // We can add more mappings here, but the initial set here comes from:
         // justsolve.archiveteam.org/wiki/DEC_Special_Graphics_Character_Set
         // See also codepage.c from qodem.
-        switch (w)
-        {
+        switch (w) {
         case 0x2192: w = vt->acschars[0]; break; // RIGHT ARROW
         case 0x2190: w = vt->acschars[1]; break; // LEFT ARROW
         case 0x2191: w = vt->acschars[2]; break; // UP ARROW
