@@ -13,8 +13,12 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/select.h>
 #include "draw.h"
 #include <SDL2/SDL.h>
+
+extern int open_pty(void);
+static int term_fd;
 
 #define MIN(a,b)      ((a) < (b) ? (a) : (b))
 #define MAX(a,b)      ((a) > (b) ? (a) : (b))
@@ -620,7 +624,7 @@ static void clear_screen(Drawable *dp)
 {
     draw_clear(dp);
     if (dp->font) {
-        draw_font_string(dp, dp->font, "Use '[' or ']' to rotate text", 20, 20,
+        draw_font_string(dp, dp->font, "Use '{' or '}' to rotate text", 20, 20,
             0, 0, dp->fgcolor, dp->bgcolor, 1, 0);
     }
 }
@@ -900,7 +904,16 @@ Font *console_load_font(struct console *con, char *path)
     return font;
 }
 
-//static void callback(tmt_msg_t m, TMT *vt, const void *a, void *p) {}
+static void sendhost(const char *str)
+{
+    write(term_fd, str, strlen(str));
+}
+
+static void callback(tmt_msg_t m, TMT *vt, const void *a, void *p)
+{
+    if (m == TMT_MSG_ANSWER)
+        sendhost(a);
+}
 
 struct console *create_console(int width, int height)
 {
@@ -916,7 +929,7 @@ struct console *create_console(int width, int height)
 
     memset(con, 0, sizeof(struct console));
 #if !OLDWAY
-    con->vt = tmt_open(height, width, NULL, NULL, NULL);
+    con->vt = tmt_open(height, width, callback, NULL, NULL);
     if (!con->vt) return 0;
     update_dirty_region(con, 0, 0, width, height);
 #endif
@@ -1450,10 +1463,6 @@ void draw_blit(Drawable *td, int dst_x, int dst_y, int width, int height,
     }
 }
 
-#include <sys/select.h>
-int open_pty(void);
-static int term_fd;
-
 static int sdl_nextevent(struct console *con, struct console *con2)
 {
     int c;
@@ -1470,12 +1479,24 @@ static int sdl_nextevent(struct console *con, struct console *con2)
                 switch (c) {
                 case '\0':  return 0;
                 case '~':   return 1;
-                case '[':   angle--;
+                case SDLK_UP:
+                    sendhost(TMT_KEY_UP);
+                    return 0;
+                case SDLK_DOWN:
+                    sendhost(TMT_KEY_DOWN);
+                    return 0;
+                case SDLK_RIGHT:
+                    sendhost(TMT_KEY_RIGHT);
+                    return 0;
+                case SDLK_LEFT:
+                    sendhost(TMT_KEY_LEFT);
+                    return 0;
+                case '{':   angle--;
                 same:
                             clear_screen(con->dp);
                             update_dirty_region(con, 0, 0, con->cols, con->lines);
                             return 0;
-                case ']':   angle++; goto same;
+                case '}':   angle++; goto same;
                 }
 #if 0
                 if (c == '\r') {
