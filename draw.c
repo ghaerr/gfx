@@ -1526,9 +1526,9 @@ int main(int ac, char **av)
     dp->font = font_load_font("times_32_tt");
     if (!(con = create_console(80, 24))) exit(4);
     //console_load_font(con, "cour_32_tt");
-    //console_load_font(con, "cour_16_tt");
+    console_load_font(con, "cour_16_tt");
     //console_load_font(con, "cour_32");
-    console_load_font(con, "DOSJ-437.F19");
+    //console_load_font(con, "DOSJ-437.F19");
     if (0x25C6 - con->font->firstchar >= con->font->size)
         tmt_set_unicode_decode(con->vt, true);
 
