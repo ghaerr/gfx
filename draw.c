@@ -625,16 +625,25 @@ static void clear_screen(Drawable *dp)
     }
 }
 
-/* output character at cursor location*/
-void console_textout(struct console *con, int c, int attr)
+void console_write(struct console *con, char *buf, size_t n)
 {
-#if !OLDWAY
+    tmt_write(con->vt, buf, n);
+    update_dirty_region(con, 0, 0, con->cols, con->lines);
+}
+
+void console_putchar(struct console *con, int c)
+{
     char buf[2];
     buf[0] = c;
     buf[1] = '\0';
     tmt_write(con->vt, buf, 1);
     update_dirty_region(con, 0, 0, con->cols, con->lines);
-#else
+}
+
+#if OLDWAY
+/* output character at cursor location*/
+void console_textout(struct console *con, int c, int attr)
+{
     switch (c) {
     case '\b':  if (--con->curx < 0) con->curx = 0; goto update;
     case '\r':  con->curx = 0; goto update;
@@ -660,8 +669,8 @@ scroll:
 
 update:
     console_movecursor(con, con->curx, con->cury);
-#endif
 }
+#endif
 
 /* convert EGA attribute to pixel value */
 static void color_from_attr(Drawable *dp, unsigned int attr, Pixel *pfg, Pixel *pbg)
@@ -1496,12 +1505,8 @@ static int sdl_nextevent(struct console *con, struct console *con2)
     if (ret > 0) {
         if (FD_ISSET(term_fd, &fdset)) {
             int n = read(term_fd, buf, sizeof(buf));
-            if (n > 0) {
-                char *p = buf;
-                do {
-                    console_textout(con, *p++ & 255, ATTR_DEFAULT);
-                } while (--n);
-            }
+            if (n > 0)
+                console_write(con, buf, n);
         }
     }
 
@@ -1549,16 +1554,10 @@ int main(int ac, char **av)
     //console_textout(con2, 127, ATTR_DEFAULT);
     /* test unicode output */
     for (int i=0x00A1; i<=0x00AF; i++) {
-        unsigned char buf[32];
-        int n = xwctomb((char *)buf, i);
-        if (n > 0) {
-            unsigned char *p = buf;
-            do {
-                console_textout(con, *p, ATTR_DEFAULT);
-                //console_textout(con2, *p, ATTR_DEFAULT);
-                p++;
-            } while (--n > 0);
-        }
+        char buf[32];
+        int n = xwctomb(buf, i);
+        if (n > 0)
+            console_write(con, buf, n);
     }
 #endif
 
