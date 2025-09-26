@@ -287,6 +287,7 @@ static int fast_cos(int angle)
 static int angle = 0;
 static int oversamp = 24;           /* min 20 for no holes in diagonal oversampling */
 
+/* convert character to font glyph index, return default glyph if not present */
 static int glyph_offset(Font *font, unsigned int c)
 {
     uint16_t first, last, offset = 0;
@@ -294,20 +295,16 @@ static int glyph_offset(Font *font, unsigned int c)
 
     c -= font->firstchar;
     if (r) {
-        while (offset < font->size) {
+        do {
             first = r[0]; last = r[1];
             if (c >= first && c <= last)
                 return c-first+offset;
-            offset += last - first + 1;
             r += 2;
-        }
-        return 127 - font->firstchar;   // FIXME check if present in font
+            offset += last - first + 1;
+        } while (offset < font->size);
+        return font->defaultchar - font->firstchar;
     }
-    if (c > font->size) {
-        c = 127 - font->firstchar;  /* use DEL box for smaller fonts */
-        if (c > font->size)
-            c = font->defaultchar - font->firstchar;
-    }
+    if (c >= font->size) c = font->defaultchar - font->firstchar;
     return c;
 }
 
@@ -1567,6 +1564,7 @@ int main(int ac, char **av)
     if (!(con = create_console(80, 24))) exit(4);
     //console_load_font(con, "cour_32_tt");
     console_load_font(con, "cour_16_tt");
+    //console_load_font(con, "rom8x16");
     //console_load_font(con, "cour_32");
     //console_load_font(con, "DOSJ-437.F19");
     if (0x25C6 - con->font->firstchar >= con->font->size)

@@ -395,6 +395,7 @@ class Font(object):
         offsets = []
         offset = 0
         startchar = text[0]
+        defchar = startchar
         numchars = len(text)
 
         # write out C source
@@ -441,6 +442,10 @@ class Font(object):
                 offset += len(bit_string) // 8
             else:
                 offset += len(bit_string) // 2
+
+            # assign DEL as default char if in font
+            if ord(char) == 127:
+                defchar = char;
 
         # join all the bitmap strings together
         bit_string = "".join(bits)
@@ -529,7 +534,7 @@ class Font(object):
             print("    0,      /* range table */")
         else:
             print("    ranges,")
-        print(f"    {ord(startchar)},     /* defaultchar */")
+        print(f"    {ord(defchar)},     /* defaultchar */")
         print( "    0,      /* bits_size */")
         print(f"    {bpp},      /* bpp */")
         print(f"    1,      /* bits_width */")
