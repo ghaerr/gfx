@@ -522,11 +522,11 @@ class Font(object):
 
         print(f"struct font font_{fontname} =", "{")
         print(f'    "{fontname}",')
-        print(f"    {max_width},     /* maxwidth */")
-        print(f"    {height},     /* height */")
-        print(f"    {height-baseline},     /* ascent */")
-        print(f"    {ord(startchar)},     /* firstchar */")
-        print(f"    {numchars},     /* size */")
+        print(f"    {max_width:4d},     /* maxwidth */")
+        print(f"    {height:4d},     /* height */")
+        print(f"    {height-baseline:4d},     /* ascent */")
+        print(f"    {ord(startchar):4d},     /* firstchar */")
+        print(f"    {numchars:4d},     /* size */")
         print( "    bits,")
         print( "    (unsigned char *)offsets,")
         print( "    widths,")
@@ -534,11 +534,11 @@ class Font(object):
             print("    0,      /* range table */")
         else:
             print("    ranges,")
-        print(f"    {ord(defchar)},     /* defaultchar */")
-        print( "    0,      /* bits_size */")
-        print(f"    {bpp},      /* bpp */")
-        print(f"    1,      /* bits_width */")
-        print(f"    {offset_width}       /* offset_width */")
+        print(f"    {ord(defchar):4d},      /* defaultchar */")
+        print( "       0,      /* bits_size */")
+        print(f"    {bpp:4d},      /* bpp */")
+        print(f"       1,      /* bits_width */")
+        print(f"    {offset_width:4d}       /* offset_width */")
         print( "};")
 
 def main():

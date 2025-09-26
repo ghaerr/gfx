@@ -9483,8 +9483,8 @@ unsigned short rom8x16_bits[] = {
 /* Exported structure definition. */
 Font font_rom8x16 = {
     "rom8x16",
-    8,
-    16,
+    8,              /* width */
+    16,             /* height */
     12,             /* ascent */
     0,              /* first char */
     256,            /* # chars */
