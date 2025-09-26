@@ -605,6 +605,55 @@ void console_movecursor(struct console *con, int x, int y)
     con->cury = con->lasty = y;
     update_dirty_region(con, x, y, 1, 1);
 }
+
+/* output character at cursor location*/
+void console_textout(struct console *con, int c, int attr)
+{
+    switch (c) {
+    case '\b':  if (--con->curx < 0) con->curx = 0; goto update;
+    case '\r':  con->curx = 0; goto update;
+    case '\n':  goto scroll;
+    case ':':   if (--oversamp <= 0) oversamp = 1;
+    same2:      printf("%d\n", oversamp);
+                goto same;
+    case ';':   ++oversamp;
+                goto same2;
+    }
+
+    con->text_ram[con->cury * con->cols + con->curx] = (c & 255) | ((attr & 255) << 8);
+    update_dirty_region (con, con->curx, con->cury, 1, 1);
+
+    if (++con->curx >= con->cols) {
+        con->curx = 0;
+scroll:
+        if (++con->cury >= con->lines) {
+            scrollup(con, 0, con->lines - 1, ATTR_DEFAULT);
+            con->cury = con->lines - 1;
+        }
+    }
+
+update:
+    console_movecursor(con, con->curx, con->cury);
+}
+
+/* draw characters from console text RAM */
+static void draw_console_ram(Drawable *dp, struct console *con, int x1, int y1,
+    int sx, int sy, int ex, int ey)
+{
+    uint16_t *vidram = con->text_ram;
+    Pixel fg, bg;
+
+    for (int y = sy; y < ey; y++) {
+        int j = y * con->cols + sx;
+        for (int x = sx; x < ex; x++) {
+            uint16_t chattr = vidram[j];
+            color_from_attr(dp, chattr >> 8, &fg, &bg);
+            draw_font_char(dp, con->font, chattr & 255, x1, y1,
+                x * con->char_width, y * con->char_height, fg, bg, 2, angle);
+            j++;
+        }
+    }
+}
 #endif
 
 /* draw horizontal line inclusive of (x1, x2) w/clipping */
@@ -648,44 +697,11 @@ void console_write(struct console *con, char *buf, size_t n)
 
 void console_putchar(struct console *con, int c)
 {
-    char buf[2];
+    char buf[1];
     buf[0] = c;
-    buf[1] = '\0';
     tmt_write(con->vt, buf, 1);
     update_dirty_region(con, 0, 0, con->cols, con->lines);
 }
-
-#if OLDWAY
-/* output character at cursor location*/
-void console_textout(struct console *con, int c, int attr)
-{
-    switch (c) {
-    case '\b':  if (--con->curx < 0) con->curx = 0; goto update;
-    case '\r':  con->curx = 0; goto update;
-    case '\n':  goto scroll;
-    case ':':   if (--oversamp <= 0) oversamp = 1;
-    same2:      printf("%d\n", oversamp);
-                goto same;
-    case ';':   ++oversamp;
-                goto same2;
-    }
-
-    con->text_ram[con->cury * con->cols + con->curx] = (c & 255) | ((attr & 255) << 8);
-    update_dirty_region (con, con->curx, con->cury, 1, 1);
-
-    if (++con->curx >= con->cols) {
-        con->curx = 0;
-scroll:
-        if (++con->cury >= con->lines) {
-            scrollup(con, 0, con->lines - 1, ATTR_DEFAULT);
-            con->cury = con->lines - 1;
-        }
-    }
-
-update:
-    console_movecursor(con, con->curx, con->cury);
-}
-#endif
 
 /* convert EGA attribute to pixel value */
 static void color_from_attr(Drawable *dp, unsigned int attr, Pixel *pfg, Pixel *pbg)
@@ -718,7 +734,6 @@ static void color_from_attr(Drawable *dp, unsigned int attr, Pixel *pfg, Pixel *
 static void draw_console_ram(Drawable *dp, struct console *con, int x1, int y1,
     int sx, int sy, int ex, int ey)
 {
-#if !OLDWAY
     const TMTSCREEN *s = tmt_screen(con->vt);
     Pixel fg, bg;
 
@@ -743,21 +758,6 @@ static void draw_console_ram(Drawable *dp, struct console *con, int x1, int y1,
             j++;
         }
     }
-#else
-    uint16_t *vidram = con->text_ram;
-    Pixel fg, bg;
-
-    for (int y = sy; y < ey; y++) {
-        int j = y * con->cols + sx;
-        for (int x = sx; x < ex; x++) {
-            uint16_t chattr = vidram[j];
-            color_from_attr(dp, chattr >> 8, &fg, &bg);
-            draw_font_char(dp, con->font, chattr & 255, x1, y1,
-                x * con->char_width, y * con->char_height, fg, bg, 2, angle);
-            j++;
-        }
-    }
-#endif
 }
 
 /* draw console onto drawable, flush=1 writes update rect to SDL, =2 draw whole console */

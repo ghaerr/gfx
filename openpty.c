@@ -24,7 +24,7 @@ int open_pty(void)
 	signal(SIGCHLD, SIG_DFL);	/* required before grantpt() */
 	tfd = posix_openpt(O_RDWR | O_NOCTTY | O_NONBLOCK);
 	if (tfd < 0 || grantpt(tfd) || unlockpt(tfd)) {
-	    error("Can't create pty /dev/ptmx\n");
+	    error("Can't open pty /dev/ptmx\n");
 	    return -1;
     }
 	strcpy(ptyname, ptsname(tfd));
@@ -40,7 +40,7 @@ int open_pty(void)
 
 		setsid();
 		if ((tfd = open(ptyname, O_RDWR)) < 0) {
-			error("Child: Can't open pty %s\n", ptyname);
+			error("Can't open pty %s\n", ptyname);
 			exit(1);
 		}
 		
@@ -70,7 +70,7 @@ again:
 			n++;
 			goto again;
 		}
-		error("Can't create pty %s\n", pty_name);
+		error("Can't open pty %s\n", pty_name);
 		return -1;
 	}
 
