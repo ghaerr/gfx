@@ -338,7 +338,7 @@ unsigned short rom8x16_bits[] = {
 0xff00,
 0xff00,
 
-/* Character 	 (0x09):
+/* Character     (0x09):
    ht=16, width=8
    +--------+
    |        |
@@ -9482,15 +9482,16 @@ unsigned short rom8x16_bits[] = {
 
 /* Exported structure definition. */
 Font font_rom8x16 = {
-	"rom8x16",
-	8,
-	16,
-	12,             /* ascent */
-	0,              /* first char */
-	256,            /* # chars */
-	(unsigned char *)rom8x16_bits,
-	0,              /* offsets */
-	0,              /* widths */
+    "rom8x16",
+    8,
+    16,
+    12,             /* ascent */
+    0,              /* first char */
+    256,            /* # chars */
+    (unsigned char *)rom8x16_bits,
+    0,              /* offsets */
+    0,              /* widths */
+    0,              /* range table */
     0,              /* default char */
     0,              /* bits_size */
     1,              /* bpp */

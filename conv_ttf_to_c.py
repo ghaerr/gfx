@@ -384,7 +384,7 @@ class Font(object):
         height = max_ascent + max_descent
         return (width, height, max_descent)
 
-    def write_python(self, text, font_file):
+    def write_python(self, text, text_range, font_file):
         """
         Render the given `text` into a python bitmap module.
         """
@@ -450,6 +450,22 @@ class Font(object):
 
         max_width = max(widths)
 
+        # if multiple ranges, output range table
+        first = -1
+        glyph_offset = 0
+        if ',' in text_range:
+            for ele in text_range.split(","):
+                char_range = list(map(to_int, ele.split("-")))
+                if len(char_range) == 1:
+                    char_range = [ char_range[0], char_range[0] ]
+                if first == -1:
+                    print("static uint16_t ranges[] = {")
+                    first = char_range[0]
+                print(f"    {char_range[0]-first:5d}, {char_range[1]-first:5d},   // {glyph_offset}");
+                glyph_offset += char_range[1] - char_range[0] + 1
+            print("};")
+            print()
+
         print("static unsigned char widths[] = {")
         print(wrap_hex(widths))
         print("};\n")
@@ -509,6 +525,10 @@ class Font(object):
         print( "    bits,")
         print( "    (unsigned char *)offsets,")
         print( "    widths,")
+        if first == -1:
+            print("    0,      /* range table */")
+        else:
+            print("    ranges,")
         print(f"    {ord(startchar)},     /* defaultchar */")
         print( "    0,      /* bits_size */")
         print(f"    {bpp},      /* bpp */")
@@ -578,7 +598,7 @@ def main():
     characters = get_chars(args.characters) if args.string is None else args.string
 
     fnt = Font(font_file, width, height)
-    fnt.write_python(characters, font_file)
+    fnt.write_python(characters, args.characters, font_file)
 
 
 main()

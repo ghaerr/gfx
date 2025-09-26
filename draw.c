@@ -287,6 +287,30 @@ static int fast_cos(int angle)
 static int angle = 0;
 static int oversamp = 24;           /* min 20 for no holes in diagonal oversampling */
 
+static int glyph_offset(Font *font, unsigned int c)
+{
+    uint16_t first, last, offset = 0;
+    uint16_t *r = font->range;
+
+    c -= font->firstchar;
+    if (r) {
+        while (offset < font->size) {
+            first = r[0]; last = r[1];
+            if (c >= first && c <= last)
+                return c-first+offset;
+            offset += last - first + 1;
+            r += 2;
+        }
+        return 127 - font->firstchar;   // FIXME check if present in font
+    }
+    if (c > font->size) {
+        c = 127 - font->firstchar;  /* use DEL box for smaller fonts */
+        if (c > font->size)
+            c = font->defaultchar - font->firstchar;
+    }
+    return c;
+}
+
 /* draw a character from bitmap font, drawbg=2 means fill bg to max width */
 int draw_font_bitmap(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, int yoff,
     Pixel fgpixel, Pixel bgpixel, int drawbg, int rotangle)
@@ -300,12 +324,7 @@ int draw_font_bitmap(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, 
     Varptr bits;
     int sin_a, cos_a, s;        /* for rotated bitmaps */
 
-    c -= font->firstchar;
-    if (c < 0 || c > font->size) {
-        c = 127 - font->firstchar;  /* use DEL box for smaller fonts */
-        if (c < 0 || c > font->size)
-            c = font->defaultchar - font->firstchar;
-   }
+    c = glyph_offset(font, c);
 
     /* get glyph bitmap start */
     if (font->offset.ptr8) {
@@ -415,12 +434,7 @@ int draw_font_alpha(Drawable *dp, Font *font, int c, int sx, int sy, int xoff, i
     Varptr bits;
     int sin_a, cos_a, s;        /* for rotated bitmaps */
 
-    c -= font->firstchar;
-    if (c < 0 || c > font->size) {
-        c = 127 - font->firstchar;  /* use DEL box for smaller fonts */
-        if (c < 0 || c > font->size)
-            c = font->defaultchar - font->firstchar;
-    }
+    c = glyph_offset(font, c);
 
     /* get glyph alpha bytes */
     if (font->offset.ptr8) {
