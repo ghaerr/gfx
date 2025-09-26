@@ -964,6 +964,15 @@ struct console *create_console(int width, int height)
     return con;
 }
 
+int console_resize(struct console *con, int width, int height)
+{
+    con->cols = width;
+    con->lines = height;
+    clear_screen(con->dp);
+    update_dirty_region(con, 0, 0, width, height);
+    return tmt_resize(con->vt, height, width);
+}
+
 Drawable *create_drawable(int pixtype, int width, int height)
 {
     Drawable *dp;
@@ -1478,6 +1487,8 @@ static int sdl_nextevent(struct console *con, struct console *con2)
 {
     int c;
     SDL_Event event;
+    static int w = 20;
+    static int h = 10;
 
     //while (SDL_WaitEvent(&event)) {
     while (SDL_PollEvent(&event)) {
@@ -1489,7 +1500,6 @@ static int sdl_nextevent(struct console *con, struct console *con2)
                 c = sdl_key(event.key.state, event.key.keysym);
                 switch (c) {
                 case '\0':  return 0;
-                case '~':   return 1;
                 case SDLK_UP:
                     sendhost(TMT_KEY_UP);
                     return 0;
@@ -1502,6 +1512,10 @@ static int sdl_nextevent(struct console *con, struct console *con2)
                 case SDLK_LEFT:
                     sendhost(TMT_KEY_LEFT);
                     return 0;
+                /* test cases follow */
+                case '~':   return 1;
+                case '_':   console_resize(con, --w, --h); return 0;
+                case '+':   console_resize(con, ++w, ++h); return 0;
                 case '{':   angle--;
                 same:
                             clear_screen(con->dp);
