@@ -13,16 +13,16 @@ typedef struct font {
     int             maxwidth;     /* max width in pixels */
     unsigned int    height;       /* height in pixels */
     int             ascent;       /* ascent (baseline) height */
-    int             firstchar;    /* first character in bitmap */
-    int             size;         /* font size in characters */
-    Varptr          bits;         /* possibly right-padded bitmap data MSB first */
+    int             firstchar;    /* first charcode in bitmap data, 0 if range */
+    int             size;         /* font size in glyph */
+    Varptr          bits;         /* right-padded bitmap data MSB first */
     Varptr          offset;       /* offsets into bitmap data (see offset_width) */
-    uint8_t *       width;        /* character widths or 0 if fixed width */
-    uint16_t *      range;        /* sparse array glyph ranges table */
-    int             defaultglyph; /* default glyph index */
+    uint8_t *       width;        /* glyph widths or 0 if fixed width */
+    uint16_t *      range;        /* charcode ranges table (sparse array) */
+    int             defaultglyph; /* bitmap index of default glyph */
     uint32_t        bits_size;    /* # words of bits (disk files only) */
     int             bpp;          /* bits per pixel (1=bitmap, 8=alpha channel) */
     int             bits_width;   /* bitmap word/Varptr size (1, 2, 4, 0=2) */
     int             offset_width; /* offset word/Varptr size (1, 2, 4, 0=4) */
-    uint8_t         data[];       /* font bits allocated in single malloc */
+    uint8_t         data[];       /* font bitmap data allocated in single malloc */
 } Font;

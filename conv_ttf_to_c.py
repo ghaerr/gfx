@@ -394,7 +394,7 @@ class Font(object):
         widths = []
         offsets = []
         offset = 0
-        startchar = text[0]
+        firstchar = ord(text[0])
         defindex = 0
         index = 0
         numchars = len(text)
@@ -458,19 +458,20 @@ class Font(object):
         max_width = max(widths)
 
         # if multiple ranges, output range table
-        first = -1
+        needrange = False
         glyph_offset = 0
         if ',' in text_range:
             for ele in text_range.split(","):
                 char_range = list(map(to_int, ele.split("-")))
                 if len(char_range) == 1:
                     char_range = [ char_range[0], char_range[0] ]
-                if first == -1:
+                if needrange == False:
                     print("static uint16_t ranges[] = {")
-                    first = char_range[0]
-                print(f"    {char_range[0]-first:5d}, {char_range[1]-first:5d},   // {glyph_offset}");
+                    needrange = True
+                    firstchar = 0
+                print(f"    {char_range[0]:5d}, {char_range[1]:5d},   // {glyph_offset}");
                 glyph_offset += char_range[1] - char_range[0] + 1
-            print("};")
+            print("       -1\n};")
             print()
 
         print("static unsigned char widths[] = {")
@@ -526,15 +527,15 @@ class Font(object):
         print(f"    {max_width:4d},     /* maxwidth */")
         print(f"    {height:4d},     /* height */")
         print(f"    {height-baseline:4d},     /* ascent */")
-        print(f"    {ord(startchar):4d},     /* firstchar */")
+        print(f"    {firstchar:4d},     /* firstchar */")
         print(f"    {numchars:4d},     /* size */")
         print( "    bits,")
         print( "    (unsigned char *)offsets,")
         print( "    widths,")
-        if first == -1:
-            print("    0,      /* range table */")
-        else:
+        if needrange:
             print("    ranges,")
+        else:
+            print("    0,      /* range table */")
         print(f"    {defindex:4d},      /* default glyph index */")
         print( "       0,      /* bits_size */")
         print(f"    {bpp:4d},      /* bpp */")
