@@ -444,8 +444,9 @@ class Font(object):
             else:
                 offset += len(bit_string) // 2
 
-            # assign BALLOT BOX or DEL as default char index if in font
-            if ord(char) == 0x2610 or ord(char) == 127:
+            # assign REPLACEMENT CHAR, BALLOT BOX or DEL as default char index if in font
+            # will use last defined character in input range
+            if ord(char) == 0xFFFD or ord(char) == 0x2610 or ord(char) == 0x7F:
                 defindex = index
             index = index + 1
 
