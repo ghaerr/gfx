@@ -459,25 +459,27 @@ class Font(object):
         max_width = max(widths)
 
         # if multiple ranges, output range table
-        needrange = False
+        needranges = False
         glyph_offset = 0
         if ',' in text_range:
             for ele in text_range.split(","):
                 char_range = list(map(to_int, ele.split("-")))
                 if len(char_range) == 1:
                     char_range = [ char_range[0], char_range[0] ]
-                if needrange == False:
+                if needranges == False:
                     print("static uint16_t ranges[] = {")
-                    needrange = True
+                    needranges = True
                     firstchar = 0
                 print(f"    {char_range[0]:5d}, {char_range[1]:5d},   // {glyph_offset}");
                 glyph_offset += char_range[1] - char_range[0] + 1
             print("};")
             print()
 
-        print("static unsigned char widths[] = {")
-        print(wrap_hex(widths))
-        print("};\n")
+        needwidths = len(set(widths)) > 1
+        if needwidths:
+            print("static unsigned char widths[] = {")
+            print(wrap_hex(widths))
+            print("};\n")
 
         byte_offsets = bytearray()
         bytes_table = [0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF]
@@ -489,14 +491,14 @@ class Font(object):
 
         print(f"// OFFSET_WIDTH = {offset_width}")
         if offset_width == 1:
-            print("static unsigned char offsets[] = {")
+            print("static uint8_t offsets[] = {")
             print(wrap_hex(byte_offsets))
         if offset_width == 2:
-            print("static unsigned short offsets[] = {")
+            print("static uint16_t offsets[] = {")
             byte_offsets16 = struct.unpack("<" + "H" * (len(byte_offsets) // 2), byte_offsets)
             print(wrap_short(byte_offsets16))
         if offset_width == 4:
-            print("static unsigned int offsets[] = {")
+            print("static uint32_t offsets[] = {")
             byte_offsets32 = struct.unpack("<" + "I" * (len(byte_offsets) // 4), byte_offsets)
             print(wrap_long(byte_offsets32))
         print("};\n")
@@ -531,12 +533,15 @@ class Font(object):
         print(f"    {firstchar:4d},     /* firstchar */")
         print(f"    {numchars:4d},     /* size */")
         print( "    bits,")
-        print( "    (unsigned char *)offsets,")
-        print( "    widths,")
-        if needrange:
-            print("    ranges,")
+        print( "  (Varptr)offsets,")
+        if needwidths:
+            print( "  widths,")
         else:
-            print("    0,      /* range table */")
+            print("       0,      /* width table */")
+        if needranges:
+            print("  ranges,")
+        else:
+            print("       0,      /* range table */")
         print(f"    {defindex:4d},      /* default glyph index */")
         print( "       0,      /* bits_size */")
         print(f"    {bpp:4d},      /* bpp */")
