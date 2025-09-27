@@ -689,6 +689,7 @@ static void clear_screen(Drawable *dp)
     }
 }
 
+#ifndef NOMAIN
 void console_write(struct console *con, char *buf, size_t n)
 {
     tmt_write(con->vt, buf, n);
@@ -799,30 +800,29 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
         reset_dirty_region(con);
     }
 }
+#endif
 
 #define ARRAYLEN(a)     (sizeof(a)/sizeof(a[0]))
 
-extern Font font_rom8x16;
-extern Font font_unifont_16;
-extern Font font_cour_32;
-extern Font font_cour_16_tt;
-extern Font font_cour_32_tt;
-extern Font font_times_32;
-extern Font font_times_32_tt;
-extern Font font_lucida_32;
-extern Font font_lucida_32_tt;
+extern Font font_rom_8x16_1;
+extern Font font_unifont_8x16_1;
+extern Font font_mssans_11x13_8;
+extern Font font_cour_11x19_8;
+extern Font font_cour_20x37_1;
+extern Font font_cour_21x37_8;
+extern Font font_times_30x37_8;
 
-static Font *fonts[] = {
-    &font_rom8x16,              /* first font is default font */
-    &font_unifont_16,
-#ifndef NOMAIN
-    &font_cour_32,
-    &font_cour_32_tt,
-    &font_cour_16_tt,
-    //&font_times_32,
-    &font_times_32_tt,
-    //&font_lucida_32,
-    //&font_lucida_32_tt,
+static Font *fonts[] = {        /* first font is default font */
+#ifdef NOMAIN
+    &font_rom_8x16_1,
+#else
+    &font_unifont_8x16_1,
+    &font_rom_8x16_1,
+    &font_mssans_11x13_8,
+    &font_cour_11x19_8,
+    &font_cour_20x37_1,
+    &font_cour_21x37_8,
+    &font_times_30x37_8,
 #endif
 };
 
@@ -917,6 +917,7 @@ Font *console_load_font(struct console *con, char *path)
     return font;
 }
 
+#ifndef NOMAIN
 static void sendhost(const char *str)
 {
     write(term_fd, str, strlen(str));
@@ -949,8 +950,6 @@ struct console *create_console(int width, int height)
     con->cols = width;
     con->lines = height;
     console_load_font(con, NULL);       /* loads default font */
-    //console_load_font(con, "cour_32");
-    //console_load_font(con, "cour_32_tt");
     //console_load_font(con, "VGA-ROM.F16");
     //console_load_font(con, "COMPAQP3.F16");
     //console_load_font(con, "DOSV-437.F16");
@@ -974,6 +973,7 @@ int console_resize(struct console *con, int width, int height)
     update_dirty_region(con, 0, 0, width, height);
     return tmt_resize(con->vt, height, width);
 }
+#endif
 
 Drawable *create_drawable(int pixtype, int width, int height)
 {
@@ -1485,6 +1485,7 @@ void draw_blit(Drawable *td, int dst_x, int dst_y, int width, int height,
     }
 }
 
+#ifndef NOMAIN
 static int sdl_nextevent(struct console *con, struct console *con2)
 {
     int c;
@@ -1561,7 +1562,6 @@ static int sdl_nextevent(struct console *con, struct console *con2)
     return 0;
 }
 
-#ifndef NOMAIN
 int main(int ac, char **av)
 {
     Drawable *dp;
@@ -1576,21 +1576,23 @@ int main(int ac, char **av)
     term_fd = open_pty();
     struct console *con;
     struct console *con2 = NULL;
-    dp->font = font_load_font("times_32_tt");
+    dp->font = font_load_font("times_30x37_8");
+    //dp->font = font_load_font("mssans_11x13_8");
     if (!(con = create_console(80, 24))) exit(4);
-    //console_load_font(con, "cour_32_tt");
-    //console_load_font(con, "cour_16_tt");
-    console_load_font(con, "unifont_16");
-    //console_load_font(con, "rom8x16");
-    //console_load_font(con, "cour_32");
+    //console_load_font(con, "cour_11x19_8");
+    //console_load_font(con, "cour_21x37_8");
+    console_load_font(con, "unifont_8x16_1");
+    //console_load_font(con, "mssans_11x13_8");
+    //console_load_font(con, "rom_8x16_1");
+    //console_load_font(con, "cour_20x37_1");
     //console_load_font(con, "DOSJ-437.F19");
     if (0x25C6 - con->font->firstchar >= con->font->size)
         tmt_set_unicode_decode(con->vt, true);
 
     //if (!(con2 = create_console(14, 8))) exit(4);
     //con2->dp = dp;
-    //console_load_font(con2, "cour_32");
-    //console_load_font(con2, "cour_32_tt");
+    //console_load_font(con2, "cour_20x37_1");
+    //console_load_font(con2, "cour_21x37_8");
     //console_load_font(con2, "DOSJ-437.F19");
     clear_screen(dp);
     draw_flush(dp);

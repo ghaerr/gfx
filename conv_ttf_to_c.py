@@ -512,12 +512,11 @@ class Font(object):
         print("};\n")
 
         fontname,_ = os.path.splitext(os.path.basename(font_file))
-        fontname += "_" + str(args_height)
-        if bpp == 8: fontname += "_tt"
+        fontname += "_" + str(max_width) + "x" + str(height) + "_" + str(bpp)
         print(f"// NAME = {fontname}")
-        print(f"// HEIGHT = {args_height}")
+        print(f"// MAX_WIDTH  = {max_width}")
         print(f"// MAX_HEIGHT = {height}")
-        print(f"// MAX_WIDTH = {max_width}")
+        print(f"// REQ HEIGHT = {args_height}")
         print(f"// BPP = {bpp}")
         print(f'// MAP = "{char_map}"')
         print()
