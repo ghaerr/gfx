@@ -9492,7 +9492,7 @@ Font font_rom8x16 = {
     0,              /* offsets */
     0,              /* widths */
     0,              /* range table */
-    127,            /* default char */
+    127,            /* default glyph index */
     0,              /* bits_size */
     1,              /* bpp */
     2,              /* bits_width */

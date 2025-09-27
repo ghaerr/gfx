@@ -395,7 +395,8 @@ class Font(object):
         offsets = []
         offset = 0
         startchar = text[0]
-        defchar = startchar
+        defindex = 0
+        index = 0
         numchars = len(text)
 
         # write out C source
@@ -432,7 +433,7 @@ class Font(object):
             # on the baseline as intended.
             y = height - glyph.ascent - baseline
             outbuffer.bitblt(glyph.bitmap, left, y)
-            print(f"// index: {ord(char)} '{char}' {char_width}x{height}")
+            print(f"// glyph: {ord(char)} '{char}' {char_width}x{height}")
             print(outbuffer)
 
             # convert bitmap to ascii bitmap string
@@ -443,9 +444,10 @@ class Font(object):
             else:
                 offset += len(bit_string) // 2
 
-            # assign DEL as default char if in font
-            if ord(char) == 127:
-                defchar = char;
+            # assign BALLOT BOX or DEL as default char index if in font
+            if ord(char) == 0x2610 or ord(char) == 127:
+                defindex = index
+            index = index + 1
 
         # join all the bitmap strings together
         bit_string = "".join(bits)
@@ -534,7 +536,7 @@ class Font(object):
             print("    0,      /* range table */")
         else:
             print("    ranges,")
-        print(f"    {ord(defchar):4d},      /* defaultchar */")
+        print(f"    {defindex:4d},      /* default glyph index */")
         print( "       0,      /* bits_size */")
         print(f"    {bpp:4d},      /* bpp */")
         print(f"       1,      /* bits_width */")

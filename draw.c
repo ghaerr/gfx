@@ -302,9 +302,9 @@ static int glyph_offset(Font *font, unsigned int c)
             r += 2;
             offset += last - first + 1;
         } while (offset < font->size);
-        return font->defaultchar - font->firstchar;
+        return font->defaultglyph;
     }
-    if (c >= font->size) c = font->defaultchar - font->firstchar;
+    if (c >= font->size) c = font->defaultglyph;
     return c;
 }
 
@@ -803,6 +803,7 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 #define ARRAYLEN(a)     (sizeof(a)/sizeof(a[0]))
 
 extern Font font_rom8x16;
+extern Font font_unifont_16;
 extern Font font_cour_32;
 extern Font font_cour_16_tt;
 extern Font font_cour_32_tt;
@@ -813,6 +814,7 @@ extern Font font_lucida_32_tt;
 
 static Font *fonts[] = {
     &font_rom8x16,              /* first font is default font */
+    &font_unifont_16,
 #ifndef NOMAIN
     &font_cour_32,
     &font_cour_32_tt,
@@ -1577,7 +1579,8 @@ int main(int ac, char **av)
     dp->font = font_load_font("times_32_tt");
     if (!(con = create_console(80, 24))) exit(4);
     //console_load_font(con, "cour_32_tt");
-    console_load_font(con, "cour_16_tt");
+    //console_load_font(con, "cour_16_tt");
+    console_load_font(con, "unifont_16");
     //console_load_font(con, "rom8x16");
     //console_load_font(con, "cour_32");
     //console_load_font(con, "DOSJ-437.F19");
