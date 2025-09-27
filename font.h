@@ -18,7 +18,7 @@ typedef struct font {
     Varptr          bits;         /* right-padded bitmap data MSB first */
     Varptr          offset;       /* offsets into bitmap data (see offset_width) */
     uint8_t *       width;        /* glyph widths or 0 if fixed width */
-    uint16_t *      range;        /* charcode ranges table (sparse array) */
+    uint16_t *      range;        /* charcode range table (sparse array index) */
     int             defaultglyph; /* bitmap index of default glyph */
     uint32_t        bits_size;    /* # words of bits (disk files only) */
     int             bpp;          /* bits per pixel (1=bitmap, 8=alpha channel) */

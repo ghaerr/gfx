@@ -472,7 +472,7 @@ class Font(object):
                     firstchar = 0
                 print(f"    {char_range[0]:5d}, {char_range[1]:5d},   // {glyph_offset}");
                 glyph_offset += char_range[1] - char_range[0] + 1
-            print("       -1\n};")
+            print("};")
             print()
 
         print("static unsigned char widths[] = {")

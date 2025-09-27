@@ -293,14 +293,14 @@ static int glyph_offset(Font *font, unsigned int c)
     uint16_t first, last, offset = 0;
     uint16_t *r = font->range;
 
-    if (r) {                        /* charcode range can be in any order */
-        while (r[0] != 0xffff) {
+    if (r) {                        /* charcode range ordered by glyph index */
+        do {
             first = r[0]; last = r[1];
             if (c >= first && c <= last)
                 return c-first+offset;
             r += 2;
             offset += last - first + 1;
-        }
+        } while (offset < font->size);
         return font->defaultglyph;
     }
     c -= font->firstchar;
