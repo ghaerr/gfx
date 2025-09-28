@@ -8,7 +8,7 @@ LDLIBS += -lSDL2
 GENFONTSRCS = fonts/cour_20x37_1.c fonts/cour_21x37_8.c fonts/cour_11x19_8.c
 GENFONTSRCS += fonts/unifont_8x16_1.c
 GENFONTSRCS += fonts/mssans_11x13_8.c
-GENFONTSRCS += fonts/times_32x40_8.c
+GENFONTSRCS += fonts/times_30x37_8.c
 GENFONTOBJS = $(GENFONTSRCS:.c=.o)
 
 gfx: draw
@@ -21,15 +21,15 @@ all: gfx swarm kumppa
 	$(CC) -c $*.c
 
 fonts/cour_20x37_1.o: fonts/cour.ttf
-	python3 conv_ttf_to_c.py $^ 32 -bpp 1 -c 0x20-0x17F,0x2500-0x25FF,0x2610 > $*.c
+	python3 conv_ttf_to_c.py $^ 37 -bpp 1 -c 0x20-0x17F,0x2500-0x25FF,0x2610 > $*.c
 	$(CC) -I. -c $*.c -o $*.o
 
 fonts/cour_21x37_8.o: fonts/cour.ttf
-	python3 conv_ttf_to_c.py $^ 32 -bpp 8 -c 0x20-0x17F,0x2500-0x25FF,0x2610 > $*.c
+	python3 conv_ttf_to_c.py $^ 37 -bpp 8 -c 0x20-0x17F,0x2500-0x25FF,0x2610 > $*.c
 	$(CC) -I. -c $*.c -o $*.o
 
 fonts/cour_11x19_8.o: fonts/cour.ttf
-	python3 conv_ttf_to_c.py $^ 16 -bpp 8 -c 0x20-0x17F,0x2500-0x25FF,0x2610 > $*.c
+	python3 conv_ttf_to_c.py $^ 19 -bpp 8 -c 0x20-0x17F,0x2500-0x25FF,0x2610 > $*.c
 	$(CC) -I. -c $*.c -o $*.o
 
 # GNU Unifont 17.0.0.1 (Basic Latin thru Spacing Modifier + Box Drawing 0x2500)
@@ -41,11 +41,11 @@ fonts/unifont_8x16_1.o: fonts/unifont.otf
 
 # Microsoft Sans Serif micross.ttf
 fonts/mssans_11x13_8.o: fonts/mssans.ttf
-	python3 conv_ttf_to_c.py $^ 11 -bpp 8 -c 0x20-0x17F,0x2610 > $*.c
+	python3 conv_ttf_to_c.py $^ 13 -bpp 8 -c 0x20-0x17F,0x2610 > $*.c
 	$(CC) -I. -c $*.c -o $*.o
 
-fonts/times_32x40_8.o: fonts/times.ttf
-	python3 conv_ttf_to_c.py $^ 32 -bpp 8 -c 0x20-0x17F,0x2610 > $*.c
+fonts/times_30x37_8.o: fonts/times.ttf
+	python3 conv_ttf_to_c.py $^ 37 -bpp 8 -c 0x20-0x17F,0x2610 > $*.c
 	$(CC) -I. -c $*.c -o $*.o
 
 draw.o tmt.o: tmt.h

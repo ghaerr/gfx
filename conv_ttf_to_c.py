@@ -313,14 +313,13 @@ class Glyph(object):
 
         return data
 
-
 class Font(object):
     """
     A truetype font representation.
     """
     def __init__(self, filename, width, height):
         self.face = freetype.Face(filename)
-        self.face.set_pixel_sizes(width, height)
+        self.face.set_pixel_sizes(0, height)
 
     def glyph_for_character(self, char):
         """
@@ -358,12 +357,11 @@ class Font(object):
         glyph = self.glyph_for_character(char)
         return glyph.bitmap
 
-    def text_dimensions(self, text):
+    def font_dimensions(self, text):
         """
-        Return (width, height, baseline) of `text` rendered in the current
-        font.
+        Return max (width, height, baseline) of `text` chars rendered in the current font.
         """
-        width = 0
+        max_width = 0
         max_ascent = 0
         max_descent = 0
 
@@ -378,17 +376,46 @@ class Font(object):
                 char_width = int(max(glyph.advance_width, glyph.width + glyph.left))
             else:
                 char_width = int(max(glyph.advance_width - glyph.left, glyph.width))
-
-            width += char_width
+            max_width = int(max(max_width, char_width))
 
         height = max_ascent + max_descent
-        return (width, height, max_descent)
+        return (max_width, height, max_descent)
+
+    # n-pass solution to setting a precise height.
+    def calc_precise_height(self, filename, text, required_height):
+        error = 0
+        height = required_height
+        for npass in range(10):
+            height += error
+            self.face = freetype.Face(filename)
+            self.face.set_pixel_sizes(0, height)
+
+            # For each character in the charset string we get the glyph
+            # and update the overall dimensions of the resulting bitmap.
+            max_width = 0
+            max_ascent = 0
+            max_descent = 0
+            for char in text:
+                glyph = self.glyph_for_character(char)
+                max_ascent = max(max_ascent, glyph.ascent)
+                max_descent = max(max_descent, glyph.descent)
+                # for a few chars e.g. _ glyph.width > glyph.advance_width
+                max_width = int(max(max_width, glyph.advance_width, glyph.width))
+
+            new_error = required_height - (max_ascent + max_descent)
+            if (new_error == 0) or (abs(new_error) - abs(error) == 0):
+                break
+            error = new_error
+        actheight = max_ascent + max_descent
+        if npass > 0:
+            print(f"// Requested height {required_height}, using {height} = {max_width}x{actheight} in {npass+1} passes")
+        return height
 
     def write_python(self, text, text_range, font_file):
         """
-        Render the given `text` into a python bitmap module.
+        Render the given `text` onto stdout as a C structure
         """
-        _, height, baseline = self.text_dimensions(text)
+        _, height, baseline = self.font_dimensions(text)
 
         bits = []
         widths = []
@@ -401,9 +428,9 @@ class Font(object):
 
         # write out C source
         cmd_line = " ".join(map(shlex.quote, sys.argv))
-        print( "/*")
-        print(f" * Converted using: {cmd_line}")
-        print( " */")
+        print( "// Converted using:")
+        print(f"//   {cmd_line}")
+        print()
         print('#include "font.h"')
         print()
 
@@ -606,12 +633,15 @@ def main():
     font_file = args.font_file
     global args_height
     args_height = height = args.font_height
-    width = args.font_height if args.font_width is None else args.font_width
+    #width = args.font_height if args.font_width is None else args.font_width
     bpp = 8 if args.bpp is None else args.bpp
     characters = get_chars(args.characters) if args.string is None else args.string
 
-    fnt = Font(font_file, width, height)
-    fnt.write_python(characters, args.characters, font_file)
+    # iterate through font sizes to find best match of requested height to pixel height
+    fnt = Font(font_file, 0, height)
+    closest_height = fnt.calc_precise_height(font_file, characters, height)
 
+    fnt = Font(font_file, 0, closest_height)
+    fnt.write_python(characters, args.characters, font_file)
 
 main()
