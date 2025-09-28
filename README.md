@@ -53,3 +53,6 @@ Kumppa X11 screensaver converted using x11 conversion sublibrary, uses source cl
 
 Converted Xswarm screensaver
 ![1](https://github.com/ghaerr/gfx/blob/master/Screenshots/swarm.png)
+
+Unicode ANSI terminal emulator
+![1](https://github.com/ghaerr/gfx/blob/master/Screenshots/unicode_terminal_emulator.png)
