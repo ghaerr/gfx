@@ -7,6 +7,7 @@
  * Sep 2022 Greg Haerr <greg@censoft.com>
  * Aug 2025 Greg Haerr rewritten, supports bitmap and TTF antialiased fonts
  */
+#define OLDWAY      0
 
 #include <stdint.h>
 #include <stdio.h>
@@ -560,6 +561,33 @@ static void reset_dirty_region(struct console *con)
     con->update.w = con->update.h = -1;
 }
 
+/* convert EGA attribute to pixel value */
+static void color_from_attr(Drawable *dp, unsigned int attr, Pixel *pfg, Pixel *pbg)
+{
+    int fg = attr & 0x0F;
+    int bg = (attr & 0x70) >> 4;
+    unsigned char fg_red = ega_colormap[fg].r;
+    unsigned char fg_green = ega_colormap[fg].g;
+    unsigned char fg_blue = ega_colormap[fg].b;
+    unsigned char bg_red = ega_colormap[bg].r;
+    unsigned char bg_green = ega_colormap[bg].g;
+    unsigned char bg_blue = ega_colormap[bg].b;
+    Pixel fgpixel, bgpixel;
+
+    switch (dp->pixtype) {
+    case MWPF_TRUECOLORARGB:    /* byte order B G R A */
+        fgpixel = RGB2PIXELARGB(fg_red, fg_green, fg_blue);
+        bgpixel = RGB2PIXELARGB(bg_red, bg_green, bg_blue);
+        break;
+    case MWPF_TRUECOLORABGR:    /* byte order R G B A */
+        fgpixel = RGB2PIXELABGR(fg_red, fg_green, fg_blue);
+        bgpixel = RGB2PIXELABGR(bg_red, bg_green, bg_blue);
+        break;
+    }
+    *pfg = fgpixel;
+    *pbg = bgpixel;
+}
+
 #if OLDWAY
 /* clear line y from x1 up to and including x2 to attribute attr */
 static void clear_line(struct console *con, int x1, int x2, int y, unsigned char attr)
@@ -606,18 +634,36 @@ void console_movecursor(struct console *con, int x, int y)
     update_dirty_region(con, x, y, 1, 1);
 }
 
+/* draw characters from console text RAM */
+static void draw_console_ram(Drawable *dp, struct console *con, int x1, int y1,
+    int sx, int sy, int ex, int ey)
+{
+    uint16_t *vidram = con->text_ram;
+    Pixel fg, bg;
+
+    for (int y = sy; y < ey; y++) {
+        int j = y * con->cols + sx;
+        for (int x = sx; x < ex; x++) {
+            uint16_t chattr = vidram[j];
+            color_from_attr(dp, chattr >> 8, &fg, &bg);
+            draw_font_char(dp, con->font, chattr & 255, x1, y1,
+                x * con->char_width, y * con->char_height, fg, bg, 2, angle);
+            j++;
+        }
+    }
+}
+
 /* output character at cursor location*/
 void console_textout(struct console *con, int c, int attr)
 {
     switch (c) {
-    case '\b':  if (--con->curx < 0) con->curx = 0; goto update;
-    case '\r':  con->curx = 0; goto update;
     case '\n':  goto scroll;
-    case ':':   if (--oversamp <= 0) oversamp = 1;
-    same2:      printf("%d\n", oversamp);
-                goto same;
-    case ';':   ++oversamp;
-                goto same2;
+    case '\r':  con->curx = 0; goto update;
+    case '\b':  if (--con->curx < 0) con->curx = 0; goto update;
+    case '\t':  while (con->curx < con->cols-1 && (++con->curx & 7))
+                    continue; goto update;
+    case '\0':  return;
+    case '\7':  return;
     }
 
     con->text_ram[con->cury * con->cols + con->curx] = (c & 255) | ((attr & 255) << 8);
@@ -636,23 +682,10 @@ update:
     console_movecursor(con, con->curx, con->cury);
 }
 
-/* draw characters from console text RAM */
-static void draw_console_ram(Drawable *dp, struct console *con, int x1, int y1,
-    int sx, int sy, int ex, int ey)
+void console_write(struct console *con, char *buf, size_t n)
 {
-    uint16_t *vidram = con->text_ram;
-    Pixel fg, bg;
-
-    for (int y = sy; y < ey; y++) {
-        int j = y * con->cols + sx;
-        for (int x = sx; x < ex; x++) {
-            uint16_t chattr = vidram[j];
-            color_from_attr(dp, chattr >> 8, &fg, &bg);
-            draw_font_char(dp, con->font, chattr & 255, x1, y1,
-                x * con->char_width, y * con->char_height, fg, bg, 2, angle);
-            j++;
-        }
-    }
+    while (n-- != 0)
+        console_textout(con, *buf++ & 255, ATTR_DEFAULT);
 }
 #endif
 
@@ -690,6 +723,8 @@ static void clear_screen(Drawable *dp)
 }
 
 #ifndef NOMAIN
+
+#if !OLDWAY
 void console_write(struct console *con, char *buf, size_t n)
 {
     tmt_write(con->vt, buf, n);
@@ -702,33 +737,6 @@ void console_putchar(struct console *con, int c)
     buf[0] = c;
     tmt_write(con->vt, buf, 1);
     update_dirty_region(con, 0, 0, con->cols, con->lines);
-}
-
-/* convert EGA attribute to pixel value */
-static void color_from_attr(Drawable *dp, unsigned int attr, Pixel *pfg, Pixel *pbg)
-{
-    int fg = attr & 0x0F;
-    int bg = (attr & 0x70) >> 4;
-    unsigned char fg_red = ega_colormap[fg].r;
-    unsigned char fg_green = ega_colormap[fg].g;
-    unsigned char fg_blue = ega_colormap[fg].b;
-    unsigned char bg_red = ega_colormap[bg].r;
-    unsigned char bg_green = ega_colormap[bg].g;
-    unsigned char bg_blue = ega_colormap[bg].b;
-    Pixel fgpixel, bgpixel;
-
-    switch (dp->pixtype) {
-    case MWPF_TRUECOLORARGB:    /* byte order B G R A */
-        fgpixel = RGB2PIXELARGB(fg_red, fg_green, fg_blue);
-        bgpixel = RGB2PIXELARGB(bg_red, bg_green, bg_blue);
-        break;
-    case MWPF_TRUECOLORABGR:    /* byte order R G B A */
-        fgpixel = RGB2PIXELABGR(fg_red, fg_green, fg_blue);
-        bgpixel = RGB2PIXELABGR(bg_red, bg_green, bg_blue);
-        break;
-    }
-    *pfg = fgpixel;
-    *pbg = bgpixel;
 }
 
 /* draw characters from console text RAM */
@@ -760,6 +768,7 @@ static void draw_console_ram(Drawable *dp, struct console *con, int x1, int y1,
         }
     }
 }
+#endif
 
 /* draw console onto drawable, flush=1 writes update rect to SDL, =2 draw whole console */
 void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
@@ -918,16 +927,19 @@ Font *console_load_font(struct console *con, char *path)
 }
 
 #ifndef NOMAIN
+
 static void sendhost(const char *str)
 {
     write(term_fd, str, strlen(str));
 }
 
+#if !OLDWAY
 static void callback(tmt_msg_t m, TMT *vt, const void *a, void *p)
 {
     if (m == TMT_MSG_ANSWER)
         sendhost(a);
 }
+#endif
 
 struct console *create_console(int width, int height)
 {
@@ -960,7 +972,7 @@ struct console *create_console(int width, int height)
     /* init text ram and update rect */
     for (i = 0; i < height; i++)
         clear_line(con, 0, con->cols - 1, i, ATTR_DEFAULT);
-    console_movecursor(con, 0, con->lines-1);
+    console_movecursor(con, 0, 0);
 #endif
     return con;
 }
@@ -1586,8 +1598,10 @@ int main(int ac, char **av)
     //console_load_font(con, "rom_8x16_1");
     //console_load_font(con, "cour_20x37_1");
     //console_load_font(con, "DOSJ-437.F19");
+#if !OLDWAY
     if (0x25C6 - con->font->firstchar >= con->font->size)
         tmt_set_unicode_decode(con->vt, true);
+#endif
 
     //if (!(con2 = create_console(14, 8))) exit(4);
     //con2->dp = dp;
