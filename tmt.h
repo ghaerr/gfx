@@ -122,7 +122,7 @@ struct TMTRECT{
 
 typedef struct TMTLINE TMTLINE;
 struct TMTLINE{
-    bool dirty;
+    int reserved;
     TMTCHAR chars[];
 };
 

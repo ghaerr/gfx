@@ -546,21 +546,6 @@ int draw_font_string(Drawable *dp, Font *font, char *text, int x, int y,
     return xoff - xstart;
 }
 
-/* update dirty rectangle in console coordinates */
-static void update_dirty_region(struct console *con, int x, int y, int w, int h)
-{
-    con->update.x = MIN(x, con->update.x);
-    con->update.y = MIN(y, con->update.y);
-    con->update.w = MAX(con->update.w, x+w);
-    con->update.h = MAX(con->update.h, y+h);
-}
-
-static void reset_dirty_region(struct console *con)
-{
-    con->update.x = con->update.y = 32767;
-    con->update.w = con->update.h = 0;
-}
-
 /* convert EGA attribute to pixel value */
 static void color_from_attr(Drawable *dp, unsigned int attr, Pixel *pfg, Pixel *pbg)
 {
@@ -589,6 +574,21 @@ static void color_from_attr(Drawable *dp, unsigned int attr, Pixel *pfg, Pixel *
 }
 
 #if OLDWAY
+/* update dirty rectangle in console coordinates */
+static void update_dirty_region(struct console *con, int x, int y, int w, int h)
+{
+    con->update.x = MIN(x, con->update.x);
+    con->update.y = MIN(y, con->update.y);
+    con->update.w = MAX(con->update.w, x+w);
+    con->update.h = MAX(con->update.h, y+h);
+}
+
+static void reset_dirty_region(struct console *con)
+{
+    con->update.x = con->update.y = 32767;
+    con->update.w = con->update.h = 0;
+}
+
 /* clear line y from x1 up to and including x2 to attribute attr */
 static void clear_line(struct console *con, int x1, int x2, int y, unsigned char attr)
 {
@@ -650,6 +650,37 @@ static void draw_console_ram(Drawable *dp, struct console *con, int x1, int y1,
                 x * con->char_width, y * con->char_height, fg, bg, 2, angle);
             j++;
         }
+    }
+}
+
+/* draw console onto drawable, flush=1 writes update rect to SDL, =2 draw whole console */
+void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
+{
+    Pixel fg, bg;
+
+    con->dp = dp;   // FIXME for testing w/clear_screen()
+
+    if (flush == 2)
+        update_dirty_region(con, 0, 0, con->cols, con->lines);
+
+    if (con->update.w > 0 || con->update.h > 0) {
+        /* draw text bitmaps from adaptor RAM */
+        draw_console_ram(dp, con, x, y,
+            con->update.x, con->update.y, con->update.w, con->update.h);
+
+        /* draw cursor */
+        color_from_attr(dp, ATTR_DEFAULT, &fg, &bg);
+        draw_font_char(dp, con->font, '_', x, y,
+            con->curx * con->char_width, con->cury * con->char_height, fg, bg, 0, angle);
+
+        if (flush == 1) {
+            sdl_draw(dp,
+                x + con->update.x * con->char_width,
+                y + con->update.y * con->char_height,
+                (con->update.w - con->update.x) * con->char_width,
+                (con->update.h - con->update.y) * con->char_height);
+        }
+        reset_dirty_region(con);
     }
 }
 
@@ -728,7 +759,6 @@ static void clear_screen(Drawable *dp)
 void console_write(struct console *con, char *buf, size_t n)
 {
     tmt_write(con->vt, buf, n);
-    update_dirty_region(con, 0, 0, con->cols, con->lines);
 }
 
 void console_putchar(struct console *con, int c)
@@ -736,7 +766,6 @@ void console_putchar(struct console *con, int c)
     char buf[1];
     buf[0] = c;
     tmt_write(con->vt, buf, 1);
-    update_dirty_region(con, 0, 0, con->cols, con->lines);
 }
 
 /* draw characters from console text RAM */
@@ -806,41 +835,6 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 }
 #endif
 
-#if OLDWAY
-/* draw console onto drawable, flush=1 writes update rect to SDL, =2 draw whole console */
-void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
-{
-    Pixel fg, bg;
-
-    con->dp = dp;   // FIXME for testing w/clear_screen()
-
-    if (flush == 2) {
-        con->update.x = 0;
-        con->update.y = 0;
-        con->update.w = con->cols;
-        con->update.h = con->lines;
-    }
-    if (con->update.w > 0 || con->update.h > 0) {
-        /* draw text bitmaps from adaptor RAM */
-        draw_console_ram(dp, con, x, y,
-            con->update.x, con->update.y, con->update.w, con->update.h);
-
-        /* draw cursor */
-        color_from_attr(dp, ATTR_DEFAULT, &fg, &bg);
-        draw_font_char(dp, con->font, '_', x, y,
-            con->curx * con->char_width, con->cury * con->char_height, fg, bg, 0, angle);
-
-        if (flush == 1) {
-            sdl_draw(dp,
-                x + con->update.x * con->char_width,
-                y + con->update.y * con->char_height,
-                (con->update.w - con->update.x) * con->char_width,
-                (con->update.h - con->update.y) * con->char_height);
-        }
-        reset_dirty_region(con);
-    }
-}
-#endif
 #endif
 
 #define ARRAYLEN(a)     (sizeof(a)/sizeof(a[0]))
@@ -1564,7 +1558,11 @@ static int sdl_nextevent(struct console *con, struct console *con2)
                 case '{':   angle--;
                 same:
                             clear_screen(con->dp);
+#if OLDWAY
                             update_dirty_region(con, 0, 0, con->cols, con->lines);
+#else
+                            tmt_dirty(con->vt, 0, 0, con->cols, con->lines);
+#endif
                             return 0;
                 case '}':   angle++; goto same;
                 }

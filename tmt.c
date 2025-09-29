@@ -113,48 +113,32 @@ tmt_clean(TMT *vt)
 {
     TMTSCREEN *s = &vt->screen;
 
-    for (size_t i = 0; i < vt->screen.nline; i++)
-        vt->dirty = vt->screen.lines[i]->dirty = false;
-
+    //for (size_t i = 0; i < vt->screen.nline; i++)
+        //vt->dirty = vt->screen.lines[i]->dirty = false;
+    vt->dirty = false;
     s->update.x = s->update.y = 32767;
     s->update.w = s->update.h = 0;
-}
-
-static wchar_t
-tacs(const TMT *vt, unsigned int c)
-{
-    /* The terminfo alternate character set for ANSI. */
-    static unsigned char map[] = {0020U, 0021U, 0030U, 0031U, 0333U, 0004U,
-                                  0261U, 0370U, 0361U, 0260U, 0331U, 0277U,
-                                  0332U, 0300U, 0305U, 0176U, 0304U, 0304U,
-                                  0304U, 0137U, 0303U, 0264U, 0301U, 0302U,
-                                  0263U, 0363U, 0362U, 0343U, 0330U, 0234U,
-                                  0376U};
-    for (size_t i = 0; i < sizeof(map); i++) {
-        if (map[i] == c)
-            return vt->acschars[i];
-    }
-    return (wchar_t)c;
 }
 
 static void
 dirtylines(TMT *vt, size_t s, size_t e)
 {
-    vt->dirty = true;
-    for (size_t i = s; i < e; i++)
-        vt->screen.lines[i]->dirty = true;
+   //for (size_t i = s; i < e; i++)
+       //vt->screen.lines[i]->dirty = true;
+   vt->dirty = true;
    tmt_dirty(vt, 0, s, vt->screen.ncol, e-s);
 }
 
 static void
 clearline(TMT *vt, TMTLINE *l, size_t s, size_t e)
 {
-    vt->dirty = l->dirty = true;
     e = MIN(e, vt->screen.ncol);
     for (size_t i = s; i < e; i++){
         l->chars[i].a = vt->attrs;
         l->chars[i].c = L' ';
     }
+    //l->dirty = true;
+    vt->dirty = true;
     tmt_dirty(vt, s, CLINENO(vt), e-s, 1);
 }
 
@@ -591,6 +575,23 @@ tmt_resize(TMT *vt, size_t nline, size_t ncol)
 }
 
 static wchar_t
+tacs(const TMT *vt, unsigned int c)
+{
+    /* The terminfo alternate character set for ANSI. */
+    static unsigned char map[] = {0020U, 0021U, 0030U, 0031U, 0333U, 0004U,
+                                  0261U, 0370U, 0361U, 0260U, 0331U, 0277U,
+                                  0332U, 0300U, 0305U, 0176U, 0304U, 0304U,
+                                  0304U, 0137U, 0303U, 0264U, 0301U, 0302U,
+                                  0263U, 0363U, 0362U, 0343U, 0330U, 0234U,
+                                  0376U};
+    for (size_t i = 0; i < sizeof(map); i++) {
+        if (map[i] == c)
+            return vt->acschars[i];
+    }
+    return (wchar_t)c;
+}
+
+static wchar_t
 dec_to_acs(TMT *vt, wchar_t w)
 {
     // Translates from DEC Special Graphics to our ACS characters.
@@ -681,7 +682,8 @@ writecharatcurs(TMT *vt, wchar_t w)
 
     CLINE(vt)->chars[vt->curs.c].c = w;
     CLINE(vt)->chars[vt->curs.c].a = vt->attrs;
-    CLINE(vt)->dirty = vt->dirty = true;
+    //CLINE(vt)->dirty = true;
+    vt->dirty = true;
     tmt_dirty(vt, vt->curs.c, CLINENO(vt), 1, 1);
 
     if (c->c < s->ncol - 1)
