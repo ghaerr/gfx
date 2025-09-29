@@ -18,80 +18,17 @@
 #include "draw.h"
 #include <SDL2/SDL.h>
 
+/* default display attribute (for testing)*/
+//#define ATTR_DEFAULT 0x09   /* bright blue */
+//#define ATTR_DEFAULT 0x0F   /* bright white */
+//#define ATTR_DEFAULT 0xF0   /* reverse ltgray */
+#define ATTR_DEFAULT 0x35
+
 extern int open_pty(void);
 static int term_fd;
 
 #define MIN(a,b)      ((a) < (b) ? (a) : (b))
 #define MAX(a,b)      ((a) > (b) ? (a) : (b))
-#define RGBDEF(r,g,b) {r, g, b, 0}
-
-/* palette tables used for console attribute color conversions */
-#if 1
-/*
- * CGA palette for 16 color systems.
- */
-static struct palentry ega_colormap[16] = {
-    RGBDEF( 0   , 0   , 0    ), /* black*/
-    RGBDEF( 0   , 0   , 0xAA ), /* blue*/
-    RGBDEF( 0   , 0xAA, 0    ), /* green*/
-    RGBDEF( 0   , 0xAA, 0xAA ), /* cyan*/
-    RGBDEF( 0xAA, 0   , 0    ), /* red*/
-    RGBDEF( 0xAA, 0   , 0xAA ), /* magenta*/
-    RGBDEF( 0xAA, 0x55, 0    ), /* brown*/
-    RGBDEF( 0xAA, 0xAA, 0xAA ), /* ltgray*/
-    RGBDEF( 0x55, 0x55, 0x55 ), /* gray*/
-    RGBDEF( 0x55, 0x55, 0xFF ), /* ltblue*/
-    RGBDEF( 0x55, 0xFF, 0x55 ), /* ltgreen*/
-    RGBDEF( 0x55, 0xFF, 0xFF ), /* ltcyan*/
-    RGBDEF( 0xFF, 0x55, 0x55 ), /* ltred*/
-    RGBDEF( 0xFF, 0x55, 0xFF ), /* ltmagenta*/
-    RGBDEF( 0xFF, 0xFF, 0x55 ), /* yellow*/
-    RGBDEF( 0xFF, 0xFF, 0xFF ), /* white*/
-};
-#elif 0
-/*
- * Standard palette for 16 color systems.
- */
-static struct palentry ega_colormap[16] = {
-    /* 16 EGA colors, arranged in VGA standard palette order*/
-    RGBDEF( 0  , 0  , 0   ),    /* black*/
-    RGBDEF( 0  , 0  , 128 ),    /* blue*/
-    RGBDEF( 0  , 128, 0   ),    /* green*/
-    RGBDEF( 0  , 128, 128 ),    /* cyan*/
-    RGBDEF( 128, 0  , 0   ),    /* red*/
-    RGBDEF( 128, 0  , 128 ),    /* magenta*/
-    RGBDEF( 128, 64 , 0   ),    /* adjusted brown*/
-    RGBDEF( 192, 192, 192 ),    /* ltgray*/
-    RGBDEF( 128, 128, 128 ),    /* gray*/
-    RGBDEF( 0  , 0  , 255 ),    /* ltblue*/
-    RGBDEF( 0  , 255, 0   ),    /* ltgreen*/
-    RGBDEF( 0  , 255, 255 ),    /* ltcyan*/
-    RGBDEF( 255, 0  , 0   ),    /* ltred*/
-    RGBDEF( 255, 0  , 255 ),    /* ltmagenta*/
-    RGBDEF( 255, 255, 0   ),    /* yellow*/
-    RGBDEF( 255, 255, 255 ),    /* white*/
-};
-#elif 0
-/* 16 color palette for attribute mapping */
-static struct palentry ega_colormap[16] = {
-    RGBDEF( 0  , 0  , 0   ),    /* 0 black*/
-    RGBDEF( 0  , 0  , 192 ),    /* 1 blue*/
-    RGBDEF( 0  , 192, 0   ),    /* 2 green*/
-    RGBDEF( 0  , 192, 192 ),    /* 3 cyan*/
-    RGBDEF( 192, 0  , 0   ),    /* 4 red*/
-    RGBDEF( 192, 0  , 192 ),    /* 5 magenta*/
-    RGBDEF( 192, 128 , 0  ),    /* 6 adjusted brown*/
-    RGBDEF( 192, 192, 192 ),    /* 7 ltgray*/
-    RGBDEF( 128, 128, 128 ),    /* gray*/
-    RGBDEF( 0  , 0  , 255 ),    /* ltblue*/
-    RGBDEF( 0  , 255, 0   ),    /* 10 ltgreen*/
-    RGBDEF( 0  , 255, 255 ),    /* ltcyan*/
-    RGBDEF( 255, 0  , 0   ),    /* ltred*/
-    RGBDEF( 255, 0  , 255 ),    /* ltmagenta*/
-    RGBDEF( 255, 255, 0   ),    /* yellow*/
-    RGBDEF( 255, 255, 255 ),    /* 15 white*/
-};
-#endif
 
 struct sdl_window {
     SDL_Window *window;
@@ -247,12 +184,6 @@ int sdl_key(Uint8 state, SDL_Keysym sym)
 
     return kc;
 }
-
-/* default display attribute (for testing)*/
-//#define ATTR_DEFAULT 0x09   /* bright blue */
-//#define ATTR_DEFAULT 0x0F   /* bright white */
-//#define ATTR_DEFAULT 0xF0   /* reverse ltgray */
-#define ATTR_DEFAULT 0x35
 
 static int fast_sin_table[180] = {
 0,   1,  2,  3,  4,  5,  6,  7,  8, 10, 11, 12, 13, 14, 15, /*  0 */
@@ -546,6 +477,111 @@ int draw_font_string(Drawable *dp, Font *font, char *text, int x, int y,
     return xoff - xstart;
 }
 
+/* draw horizontal line inclusive of (x1, x2) w/clipping */
+void draw_hline(Drawable *dp, int x1, int x2, int y)
+{
+    if ((unsigned)y >= dp->height)
+        return;
+
+    Pixel *pixel = (Pixel *)(dp->pixels + y * dp->pitch + x1 * dp->bytespp);
+    while (x1++ <= x2) {
+        if ((unsigned)x1 >= dp->width)
+            return;
+        *pixel++ = dp->fgcolor;
+    }
+}
+
+void draw_clear(Drawable *dp)
+{
+    Pixel save = dp->fgcolor;
+
+    dp->fgcolor = dp->bgcolor;
+    for (int y = 0; y < dp->height; y++)
+        draw_hline(dp, 0, dp->width - 1, y);
+    dp->fgcolor = save;
+}
+
+static void clear_screen(Drawable *dp)
+{
+    draw_clear(dp);
+    if (dp->font) {
+        draw_font_string(dp, dp->font, "Use '{' or '}' to rotate text", 20, 20,
+            0, 0, dp->fgcolor, dp->bgcolor, 1, 0);
+    }
+}
+
+#ifndef NOMAIN
+
+#define RGBDEF(r,g,b) {r, g, b, 0}
+
+/* palette tables used for console attribute color conversions */
+#if 1
+/*
+ * CGA palette for 16 color systems.
+ */
+static struct palentry ega_colormap[16] = {
+    RGBDEF( 0   , 0   , 0    ), /* black*/
+    RGBDEF( 0   , 0   , 0xAA ), /* blue*/
+    RGBDEF( 0   , 0xAA, 0    ), /* green*/
+    RGBDEF( 0   , 0xAA, 0xAA ), /* cyan*/
+    RGBDEF( 0xAA, 0   , 0    ), /* red*/
+    RGBDEF( 0xAA, 0   , 0xAA ), /* magenta*/
+    RGBDEF( 0xAA, 0x55, 0    ), /* brown*/
+    RGBDEF( 0xAA, 0xAA, 0xAA ), /* ltgray*/
+    RGBDEF( 0x55, 0x55, 0x55 ), /* gray*/
+    RGBDEF( 0x55, 0x55, 0xFF ), /* ltblue*/
+    RGBDEF( 0x55, 0xFF, 0x55 ), /* ltgreen*/
+    RGBDEF( 0x55, 0xFF, 0xFF ), /* ltcyan*/
+    RGBDEF( 0xFF, 0x55, 0x55 ), /* ltred*/
+    RGBDEF( 0xFF, 0x55, 0xFF ), /* ltmagenta*/
+    RGBDEF( 0xFF, 0xFF, 0x55 ), /* yellow*/
+    RGBDEF( 0xFF, 0xFF, 0xFF ), /* white*/
+};
+#elif 0
+/*
+ * Standard palette for 16 color systems.
+ */
+static struct palentry ega_colormap[16] = {
+    /* 16 EGA colors, arranged in VGA standard palette order*/
+    RGBDEF( 0  , 0  , 0   ),    /* black*/
+    RGBDEF( 0  , 0  , 128 ),    /* blue*/
+    RGBDEF( 0  , 128, 0   ),    /* green*/
+    RGBDEF( 0  , 128, 128 ),    /* cyan*/
+    RGBDEF( 128, 0  , 0   ),    /* red*/
+    RGBDEF( 128, 0  , 128 ),    /* magenta*/
+    RGBDEF( 128, 64 , 0   ),    /* adjusted brown*/
+    RGBDEF( 192, 192, 192 ),    /* ltgray*/
+    RGBDEF( 128, 128, 128 ),    /* gray*/
+    RGBDEF( 0  , 0  , 255 ),    /* ltblue*/
+    RGBDEF( 0  , 255, 0   ),    /* ltgreen*/
+    RGBDEF( 0  , 255, 255 ),    /* ltcyan*/
+    RGBDEF( 255, 0  , 0   ),    /* ltred*/
+    RGBDEF( 255, 0  , 255 ),    /* ltmagenta*/
+    RGBDEF( 255, 255, 0   ),    /* yellow*/
+    RGBDEF( 255, 255, 255 ),    /* white*/
+};
+#elif 0
+/* 16 color palette for attribute mapping */
+static struct palentry ega_colormap[16] = {
+    RGBDEF( 0  , 0  , 0   ),    /* 0 black*/
+    RGBDEF( 0  , 0  , 192 ),    /* 1 blue*/
+    RGBDEF( 0  , 192, 0   ),    /* 2 green*/
+    RGBDEF( 0  , 192, 192 ),    /* 3 cyan*/
+    RGBDEF( 192, 0  , 0   ),    /* 4 red*/
+    RGBDEF( 192, 0  , 192 ),    /* 5 magenta*/
+    RGBDEF( 192, 128 , 0  ),    /* 6 adjusted brown*/
+    RGBDEF( 192, 192, 192 ),    /* 7 ltgray*/
+    RGBDEF( 128, 128, 128 ),    /* gray*/
+    RGBDEF( 0  , 0  , 255 ),    /* ltblue*/
+    RGBDEF( 0  , 255, 0   ),    /* 10 ltgreen*/
+    RGBDEF( 0  , 255, 255 ),    /* ltcyan*/
+    RGBDEF( 255, 0  , 0   ),    /* ltred*/
+    RGBDEF( 255, 0  , 255 ),    /* ltmagenta*/
+    RGBDEF( 255, 255, 0   ),    /* yellow*/
+    RGBDEF( 255, 255, 255 ),    /* 15 white*/
+};
+#endif
+
 /* convert EGA attribute to pixel value */
 static void color_from_attr(Drawable *dp, unsigned int attr, Pixel *pfg, Pixel *pbg)
 {
@@ -685,7 +721,7 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 }
 
 /* output character at cursor location*/
-void console_textout(struct console *con, int c, int attr)
+void console_putchar(struct console *con, int c)
 {
     switch (c) {
     case '\n':  goto scroll;
@@ -697,7 +733,7 @@ void console_textout(struct console *con, int c, int attr)
     case '\7':  return;
     }
 
-    con->text_ram[con->cury * con->cols + con->curx] = (c & 255) | ((attr & 255) << 8);
+    con->text_ram[con->cury * con->cols + con->curx] = (c & 255) | (ATTR_DEFAULT << 8);
     update_dirty_region (con, con->curx, con->cury, 1, 1);
 
     if (++con->curx >= con->cols) {
@@ -716,46 +752,22 @@ update:
 void console_write(struct console *con, char *buf, size_t n)
 {
     while (n-- != 0)
-        console_textout(con, *buf++ & 255, ATTR_DEFAULT);
+        console_putchar(con, *buf++ & 255);
 }
 #endif
 
-/* draw horizontal line inclusive of (x1, x2) w/clipping */
-void draw_hline(Drawable *dp, int x1, int x2, int y)
+static void sendhost(const char *str)
 {
-    if ((unsigned)y >= dp->height)
-        return;
-
-    Pixel *pixel = (Pixel *)(dp->pixels + y * dp->pitch + x1 * dp->bytespp);
-    while (x1++ <= x2) {
-        if ((unsigned)x1 >= dp->width)
-            return;
-        *pixel++ = dp->fgcolor;
-    }
+    write(term_fd, str, strlen(str));
 }
-
-void draw_clear(Drawable *dp)
-{
-    Pixel save = dp->fgcolor;
-
-    dp->fgcolor = dp->bgcolor;
-    for (int y = 0; y < dp->height; y++)
-        draw_hline(dp, 0, dp->width - 1, y);
-    dp->fgcolor = save;
-}
-
-static void clear_screen(Drawable *dp)
-{
-    draw_clear(dp);
-    if (dp->font) {
-        draw_font_string(dp, dp->font, "Use '{' or '}' to rotate text", 20, 20,
-            0, 0, dp->fgcolor, dp->bgcolor, 1, 0);
-    }
-}
-
-#ifndef NOMAIN
 
 #if !OLDWAY
+static void callback(tmt_msg_t m, TMT *vt, const void *a, void *p)
+{
+    if (m == TMT_MSG_ANSWER)
+        sendhost(a);
+}
+
 void console_write(struct console *con, char *buf, size_t n)
 {
     tmt_write(con->vt, buf, n);
@@ -819,9 +831,10 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
         const TMTCURSOR *cursor = tmt_cursor(con->vt);
         con->curx = cursor->c;
         con->cury = cursor->r;
-        if (!cursor->hidden)
-        draw_font_char(dp, con->font, '_', x, y,
-            con->curx * con->char_width, con->cury * con->char_height, fg, bg, 0, angle);
+        if (!cursor->hidden) {
+            draw_font_char(dp, con->font, '_', x, y, con->curx * con->char_width,
+                con->cury * con->char_height, fg, bg, 0, angle);
+        }
 
         if (flush == 1) {
             sdl_draw(dp,
@@ -835,7 +848,7 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 }
 #endif
 
-#endif
+#endif /* NOMAIN */
 
 #define ARRAYLEN(a)     (sizeof(a)/sizeof(a[0]))
 
@@ -937,6 +950,8 @@ Font *font_load_font(char *path)
     return font;
 }
 
+#ifndef NOMAIN
+
 Font *console_load_font(struct console *con, char *path)
 {
     Font *font = font_load_font(path);
@@ -952,21 +967,6 @@ Font *console_load_font(struct console *con, char *path)
     return font;
 }
 
-#ifndef NOMAIN
-
-static void sendhost(const char *str)
-{
-    write(term_fd, str, strlen(str));
-}
-
-#if !OLDWAY
-static void callback(tmt_msg_t m, TMT *vt, const void *a, void *p)
-{
-    if (m == TMT_MSG_ANSWER)
-        sendhost(a);
-}
-#endif
-
 struct console *create_console(int width, int height)
 {
     struct console *con;
@@ -980,24 +980,18 @@ struct console *create_console(int width, int height)
     if (!con) return 0;
 
     memset(con, 0, sizeof(struct console));
-#if !OLDWAY
-    con->vt = tmt_open(height, width, callback, NULL, NULL);
-    if (!con->vt) return 0;
-#endif
     con->cols = width;
     con->lines = height;
     console_load_font(con, NULL);       /* loads default font */
-    //console_load_font(con, "VGA-ROM.F16");
-    //console_load_font(con, "COMPAQP3.F16");
-    //console_load_font(con, "DOSV-437.F16");
-    //console_load_font(con, "DOSJ-437.F19");
-    //console_load_font(con, "CGA.F08");
 
 #if OLDWAY
     /* init text ram and update rect */
     for (i = 0; i < height; i++)
         clear_line(con, 0, con->cols - 1, i, ATTR_DEFAULT);
     console_movecursor(con, 0, 0);
+#else
+    con->vt = tmt_open(height, width, callback, NULL, NULL);
+    if (!con->vt) return 0;
 #endif
     return con;
 }
@@ -1566,19 +1560,8 @@ static int sdl_nextevent(struct console *con, struct console *con2)
                             return 0;
                 case '}':   angle++; goto same;
                 }
-#if 0
-                if (c == '\r') {
-                    console_textout(con, c, ATTR_DEFAULT);
-                    console_textout(con2, c, ATTR_DEFAULT);
-                    c = '\n';
-                }
-                console_textout(con, c, ATTR_DEFAULT);
-                console_textout(con2, c, ATTR_DEFAULT);
-                return 0;
-#else
                 char c2 = c;
                 write(term_fd, &c2, 1);
-#endif
         }
     }
     fd_set fdset;
@@ -1619,15 +1602,19 @@ int main(int ac, char **av)
     dp->font = font_load_font("times_30x37_8");
     //dp->font = font_load_font("mssans_11x13_8");
     if (!(con = create_console(80, 24))) exit(4);
+    //console_load_font(con, "unifont_8x16_1");
     //console_load_font(con, "cour_11x19_8");
     //console_load_font(con, "cour_21x37_8");
-    console_load_font(con, "unifont_8x16_1");
+    //console_load_font(con, "cour_20x37_1");
     //console_load_font(con, "mssans_11x13_8");
     //console_load_font(con, "rom_8x16_1");
-    //console_load_font(con, "cour_20x37_1");
     //console_load_font(con, "DOSJ-437.F19");
+    //console_load_font(con, "VGA-ROM.F16");
+    //console_load_font(con, "COMPAQP3.F16");
+    //console_load_font(con, "DOSV-437.F16");
+    //console_load_font(con, "CGA.F08");
 #if !OLDWAY
-    if (0x25C6 - con->font->firstchar >= con->font->size)
+    if (con->font->range == NULL)      /* not likely a unicode font */
         tmt_set_unicode_decode(con->vt, true);
 #endif
 
@@ -1641,11 +1628,11 @@ int main(int ac, char **av)
 
 #if 2
     /* test invalid UTF-8 */
-    //console_textout(con, 0xc0, ATTR_DEFAULT);
-    //console_textout(con2, 0xc1, ATTR_DEFAULT);
+    //console_putchar(con, 0xc0);
+    //console_putchar(con2, 0xc1);
     /* test undefined glyph */
-    //console_textout(con, 127, ATTR_DEFAULT);
-    //console_textout(con2, 127, ATTR_DEFAULT);
+    //console_putchar(con, 127);
+    //console_putchar(con2, 127);
     /* test unicode output */
     for (int i=0x00A1; i<=0x00AF; i++) {
         char buf[32];
