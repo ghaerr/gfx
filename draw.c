@@ -558,7 +558,7 @@ static void update_dirty_region(struct console *con, int x, int y, int w, int h)
 static void reset_dirty_region(struct console *con)
 {
     con->update.x = con->update.y = 32767;
-    con->update.w = con->update.h = -1;
+    con->update.w = con->update.h = 0;
 }
 
 /* convert EGA attribute to pixel value */
@@ -768,8 +768,45 @@ static void draw_console_ram(Drawable *dp, struct console *con, int x1, int y1,
         }
     }
 }
+
+/* draw console onto drawable, flush=1 writes update rect to SDL, =2 draw whole console */
+void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
+{
+    const TMTRECT *update = &tmt_screen(con->vt)->update;
+    Pixel fg, bg;
+
+    con->dp = dp;   // FIXME for testing w/clear_screen()
+
+    if (flush == 2)
+        tmt_dirty(con->vt, 0, 0, con->cols, con->lines);
+
+    if (update->w > 0 || update->h > 0) {
+        /* draw text bitmaps from adaptor RAM */
+        draw_console_ram(dp, con, x, y,
+            update->x, update->y, update->w, update->h);
+
+        /* draw cursor */
+        color_from_attr(dp, ATTR_DEFAULT, &fg, &bg);
+        const TMTCURSOR *cursor = tmt_cursor(con->vt);
+        con->curx = cursor->c;
+        con->cury = cursor->r;
+        if (!cursor->hidden)
+        draw_font_char(dp, con->font, '_', x, y,
+            con->curx * con->char_width, con->cury * con->char_height, fg, bg, 0, angle);
+
+        if (flush == 1) {
+            sdl_draw(dp,
+                x + update->x * con->char_width,
+                y + update->y * con->char_height,
+                (update->w - update->x) * con->char_width,
+                (update->h - update->y) * con->char_height);
+        }
+        tmt_clean(con->vt);
+    }
+}
 #endif
 
+#if OLDWAY
 /* draw console onto drawable, flush=1 writes update rect to SDL, =2 draw whole console */
 void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 {
@@ -783,19 +820,13 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
         con->update.w = con->cols;
         con->update.h = con->lines;
     }
-    if (con->update.w >= 0 || con->update.h >= 0) {
+    if (con->update.w > 0 || con->update.h > 0) {
         /* draw text bitmaps from adaptor RAM */
         draw_console_ram(dp, con, x, y,
             con->update.x, con->update.y, con->update.w, con->update.h);
 
         /* draw cursor */
         color_from_attr(dp, ATTR_DEFAULT, &fg, &bg);
-#if !OLDWAY
-        const TMTPOINT *cursor = tmt_cursor(con->vt);
-        con->curx = cursor->c;
-        con->cury = cursor->r;
-        if (!cursor->hidden)
-#endif
         draw_font_char(dp, con->font, '_', x, y,
             con->curx * con->char_width, con->cury * con->char_height, fg, bg, 0, angle);
 
@@ -809,6 +840,7 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
         reset_dirty_region(con);
     }
 }
+#endif
 #endif
 
 #define ARRAYLEN(a)     (sizeof(a)/sizeof(a[0]))
@@ -957,7 +989,6 @@ struct console *create_console(int width, int height)
 #if !OLDWAY
     con->vt = tmt_open(height, width, callback, NULL, NULL);
     if (!con->vt) return 0;
-    update_dirty_region(con, 0, 0, width, height);
 #endif
     con->cols = width;
     con->lines = height;
@@ -982,7 +1013,6 @@ int console_resize(struct console *con, int width, int height)
     con->cols = width;
     con->lines = height;
     clear_screen(con->dp);
-    update_dirty_region(con, 0, 0, width, height);
     return tmt_resize(con->vt, height, width);
 }
 #endif

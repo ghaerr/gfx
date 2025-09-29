@@ -37,6 +37,7 @@
 #define MAX(x, y) (((size_t)(x) > (size_t)(y)) ? (size_t)(x) : (size_t)(y))
 #define MIN(x, y) (((size_t)(x) < (size_t)(y)) ? (size_t)(x) : (size_t)(y))
 #define CLINE(vt) (vt)->screen.lines[MIN((vt)->curs.r, (vt)->screen.nline - 1)]
+#define CLINENO(vt) (MIN((vt)->curs.r, (vt)->screen.nline - 1))
 
 #define SCR_DEF ((size_t)-1)
 
@@ -46,7 +47,7 @@
 
 #define COMMON_VARS             \
     TMTSCREEN *s = &vt->screen; \
-    TMTPOINT *c = &vt->curs;    \
+    TMTCURSOR *c = &vt->curs;    \
     TMTLINE *l = CLINE(vt);     \
     TMTCHAR *t = vt->tabs->chars
 
@@ -59,7 +60,7 @@ struct TMT{
     bool decode_unicode;                // Try to decode characters to ACS equivalents?
 
     TMTSCREEN screen;
-    TMTPOINT curs, oldcurs;
+    TMTCURSOR curs, oldcurs;
     TMTATTRS attrs, oldattrs;
     TMTLINE *tabs;
     size_t minline;
@@ -96,6 +97,29 @@ tmt_set_unicode_decode(TMT *vt, bool v)
     return r;
 }
 
+void
+tmt_dirty(TMT *vt, size_t x, size_t y, size_t w, size_t h)
+{
+    TMTSCREEN *s = &vt->screen;
+
+    s->update.x = MIN(x, s->update.x);
+    s->update.y = MIN(y, s->update.y);
+    s->update.w = MAX(s->update.w, x+w);
+    s->update.h = MAX(s->update.h, y+h);
+}
+
+void
+tmt_clean(TMT *vt)
+{
+    TMTSCREEN *s = &vt->screen;
+
+    for (size_t i = 0; i < vt->screen.nline; i++)
+        vt->dirty = vt->screen.lines[i]->dirty = false;
+
+    s->update.x = s->update.y = 32767;
+    s->update.w = s->update.h = 0;
+}
+
 static wchar_t
 tacs(const TMT *vt, unsigned int c)
 {
@@ -119,16 +143,19 @@ dirtylines(TMT *vt, size_t s, size_t e)
     vt->dirty = true;
     for (size_t i = s; i < e; i++)
         vt->screen.lines[i]->dirty = true;
+   tmt_dirty(vt, 0, s, vt->screen.ncol, e-s);
 }
 
 static void
 clearline(TMT *vt, TMTLINE *l, size_t s, size_t e)
 {
     vt->dirty = l->dirty = true;
-    for (size_t i = s; i < e && i < vt->screen.ncol; i++){
+    e = MIN(e, vt->screen.ncol);
+    for (size_t i = s; i < e; i++){
         l->chars[i].a = vt->attrs;
         l->chars[i].c = L' ';
     }
+    tmt_dirty(vt, s, CLINENO(vt), e-s, 1);
 }
 
 static void
@@ -557,6 +584,7 @@ tmt_resize(TMT *vt, size_t nline, size_t ncol)
         vt->tabs->chars[i].c = L'*';
 
     fixcursor(vt);
+    tmt_clean(vt);
     dirtylines(vt, 0, nline);
     notify(vt, true, true);
     return true;
@@ -654,6 +682,7 @@ writecharatcurs(TMT *vt, wchar_t w)
     CLINE(vt)->chars[vt->curs.c].c = w;
     CLINE(vt)->chars[vt->curs.c].a = vt->attrs;
     CLINE(vt)->dirty = vt->dirty = true;
+    tmt_dirty(vt, vt->curs.c, CLINENO(vt), 1, 1);
 
     if (c->c < s->ncol - 1)
         c->c++;
@@ -677,7 +706,8 @@ getmbchar(TMT *vt)
 void
 tmt_write(TMT *vt, const char *s, size_t n)
 {
-    TMTPOINT oc = vt->curs;
+    TMTCURSOR oc = vt->curs;
+    bool moved;
     wchar_t wc;
     n = n? n : strlen(s);
 
@@ -695,7 +725,13 @@ tmt_write(TMT *vt, const char *s, size_t n)
         }
     }
 
-    notify(vt, vt->dirty, memcmp(&oc, &vt->curs, sizeof(oc)) != 0);
+    moved = memcmp(&oc, &vt->curs, sizeof(oc)) != 0;
+    if (moved) {
+        tmt_dirty(vt, oc.c, oc.r, 1, 1);
+        tmt_dirty(vt, vt->curs.c, vt->curs.r, 1, 1);
+    }
+
+    notify(vt, vt->dirty, moved);
 }
 
 const TMTSCREEN *
@@ -704,17 +740,10 @@ tmt_screen(const TMT *vt)
     return &vt->screen;
 }
 
-const TMTPOINT *
+const TMTCURSOR *
 tmt_cursor(const TMT *vt)
 {
     return &vt->curs;
-}
-
-void
-tmt_clean(TMT *vt)
-{
-    for (size_t i = 0; i < vt->screen.nline; i++)
-        vt->dirty = vt->screen.lines[i]->dirty = false;
 }
 
 void

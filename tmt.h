@@ -107,11 +107,17 @@ struct TMTCHAR{
     TMTATTRS a;
 } __attribute__((packed));
 
-typedef struct TMTPOINT TMTPOINT;
-struct TMTPOINT{
+typedef struct TMTCURSOR TMTCURSOR;
+struct TMTCURSOR{
     size_t r;
     size_t c;
     bool hidden;
+};
+
+typedef struct TMTRECT TMTRECT;
+struct TMTRECT{
+    size_t x, y;
+    size_t w, h;
 };
 
 typedef struct TMTLINE TMTLINE;
@@ -124,6 +130,7 @@ typedef struct TMTSCREEN TMTSCREEN;
 struct TMTSCREEN{
     size_t nline;
     size_t ncol;
+    TMTRECT update;
     TMTLINE **lines;
 };
 
@@ -150,8 +157,9 @@ void tmt_close(TMT *vt);
 bool tmt_resize(TMT *vt, size_t nline, size_t ncol);
 void tmt_write(TMT *vt, const char *s, size_t n);
 const TMTSCREEN *tmt_screen(const TMT *vt);
-const TMTPOINT *tmt_cursor(const TMT *vt);
+const TMTCURSOR *tmt_cursor(const TMT *vt);
 void tmt_clean(TMT *vt);
+void tmt_dirty(TMT *vt, size_t x, size_t y, size_t w, size_t h);
 void tmt_reset(TMT *vt);
 
 #endif
