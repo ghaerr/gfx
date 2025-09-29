@@ -1,5 +1,6 @@
 /* Copyright (c) 2017 Rob King
  * All rights reserved.
+ * Sep 2025 Enhancements by Greg Haerr
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -56,8 +57,8 @@
 struct TMT{
     enum {S_NUL, S_ESC, S_ARG, S_TITLE, S_TITLE_ARG, S_GT_ARG, S_LPAREN, S_RPAREN} state;
 
-    bool dirty, acs, ignored, XN, q;
-    bool decode_unicode;                // Try to decode characters to ACS equivalents?
+    bool acs, ignored, XN, q;
+    bool unicode_to_acs;
 
     TMTSCREEN screen;
     TMTCURSOR curs, oldcurs;
@@ -90,10 +91,10 @@ static TMTATTRS defattrs = {.fg = TMT_COLOR_DEFAULT, .bg = TMT_COLOR_DEFAULT};
 static void writecharatcurs(TMT *vt, wchar_t w);
 
 bool
-tmt_set_unicode_decode(TMT *vt, bool v)
+tmt_unicode_to_acs(TMT *vt, bool v)
 {
-    bool r = vt->decode_unicode;
-    vt->decode_unicode = v;
+    bool r = vt->unicode_to_acs;
+    vt->unicode_to_acs = v;
     return r;
 }
 
@@ -102,6 +103,7 @@ tmt_dirty(TMT *vt, size_t x, size_t y, size_t w, size_t h)
 {
     TMTSCREEN *s = &vt->screen;
 
+    s->update.dirty = true;
     s->update.x = MIN(x, s->update.x);
     s->update.y = MIN(y, s->update.y);
     s->update.w = MAX(s->update.w, x+w);
@@ -113,9 +115,7 @@ tmt_clean(TMT *vt)
 {
     TMTSCREEN *s = &vt->screen;
 
-    //for (size_t i = 0; i < vt->screen.nline; i++)
-        //vt->dirty = vt->screen.lines[i]->dirty = false;
-    vt->dirty = false;
+    s->update.dirty = false;
     s->update.x = s->update.y = 32767;
     s->update.w = s->update.h = 0;
 }
@@ -123,9 +123,6 @@ tmt_clean(TMT *vt)
 static void
 dirtylines(TMT *vt, size_t s, size_t e)
 {
-   //for (size_t i = s; i < e; i++)
-       //vt->screen.lines[i]->dirty = true;
-   vt->dirty = true;
    tmt_dirty(vt, 0, s, vt->screen.ncol, e-s);
 }
 
@@ -137,8 +134,6 @@ clearline(TMT *vt, TMTLINE *l, size_t s, size_t e)
         l->chars[i].a = vt->attrs;
         l->chars[i].c = L' ';
     }
-    //l->dirty = true;
-    vt->dirty = true;
     tmt_dirty(vt, s, CLINENO(vt), e-s, 1);
 }
 
@@ -624,7 +619,7 @@ writecharatcurs(TMT *vt, wchar_t w)
         }
     }
 
-    if (vt->decode_unicode) {
+    if (vt->unicode_to_acs) {   // replace some unicode with ACS glyphs
         // We can add more mappings here, but the initial set here comes from:
         // justsolve.archiveteam.org/wiki/DEC_Special_Graphics_Character_Set
         // See also codepage.c from qodem.
@@ -682,8 +677,6 @@ writecharatcurs(TMT *vt, wchar_t w)
 
     CLINE(vt)->chars[vt->curs.c].c = w;
     CLINE(vt)->chars[vt->curs.c].a = vt->attrs;
-    //CLINE(vt)->dirty = true;
-    vt->dirty = true;
     tmt_dirty(vt, vt->curs.c, CLINENO(vt), 1, 1);
 
     if (c->c < s->ncol - 1)
@@ -733,7 +726,7 @@ tmt_write(TMT *vt, const char *s, size_t n)
         tmt_dirty(vt, vt->curs.c, vt->curs.r, 1, 1);
     }
 
-    notify(vt, vt->dirty, moved);
+    notify(vt, vt->screen.update.dirty, moved);
 }
 
 const TMTSCREEN *

@@ -813,7 +813,7 @@ static void draw_console_ram(Drawable *dp, struct console *con, int x1, int y1,
 /* draw console onto drawable, flush=1 writes update rect to SDL, =2 draw whole console */
 void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
 {
-    const TMTRECT *update = &tmt_screen(con->vt)->update;
+    const TMTUPDATE *update = &tmt_screen(con->vt)->update;
     Pixel fg, bg;
 
     con->dp = dp;   // FIXME for testing w/clear_screen()
@@ -821,7 +821,7 @@ void draw_console(struct console *con, Drawable *dp, int x, int y, int flush)
     if (flush == 2)
         tmt_dirty(con->vt, 0, 0, con->cols, con->lines);
 
-    if (update->w > 0 || update->h > 0) {
+    if (update->dirty) {
         /* draw text bitmaps from adaptor RAM */
         draw_console_ram(dp, con, x, y,
             update->x, update->y, update->w, update->h);
@@ -1615,7 +1615,7 @@ int main(int ac, char **av)
     //console_load_font(con, "CGA.F08");
 #if !OLDWAY
     if (con->font->range == NULL)      /* not likely a unicode font */
-        tmt_set_unicode_decode(con->vt, true);
+        tmt_unicode_to_acs(con->vt, true);
 #endif
 
     //if (!(con2 = create_console(14, 8))) exit(4);
