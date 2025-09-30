@@ -137,14 +137,14 @@ size_t xwcrtomb(char *restrict s, wchar_t wc, Mbstate_t *restrict st)
                 *s++ = 0xc0 | (wc>>6);
                 *s = 0x80 | (wc&0x3f);
                 return 2;
-        } else if ((unsigned)wc < 0xd800 || (unsigned)wc-0xe000u < 0x2000) {
+        } else if ((unsigned)wc < 0xd800 || (unsigned)wc-0xe000 < 0x2000) {
                 *s++ = 0xe0 | (wc>>12);
                 *s++ = 0x80 | ((wc>>6)&0x3f);
                 *s = 0x80 | (wc&0x3f);
                 return 3;
         }
 #if !ELKS
-	else if ((uint32_t)wc-(uint32_t)0x10000 < (uint32_t)0x100000) {
+	else if ((unsigned)wc-0x10000 < 0x100000) {
                 *s++ = 0xf0 | (wc>>18);
                 *s++ = 0x80 | ((wc>>12)&0x3f);
                 *s++ = 0x80 | ((wc>>6)&0x3f);
