@@ -10,6 +10,9 @@
 #define MWPF_TRUECOLORARGB  0   /* 32bpp, memory byte order B, G, R, A */
 #define MWPF_TRUECOLORABGR  1   /* 32bpp, memory byte order R, G, B, A */
 
+#define MIN(a,b)      ((a) < (b) ? (a) : (b))
+#define MAX(a,b)      ((a) > (b) ? (a) : (b))
+
 typedef uint32_t Pixel;     /* internal pixel format (ARGB or ABGR) */
 typedef uint8_t Alpha;      /* size of alpha channel components */
 
@@ -57,9 +60,7 @@ struct console {
     Rect update;            /* console update region in cols/lines coordinates */
     Drawable *dp;            //FIXME for testing only
     TMT *vt;
-#if OLDWAY
-    uint16_t text_ram[];    /* adaptor RAM (= cols * lines * 2) in single malloc */
-#endif
+    uint16_t text_ram[];    /* adaptor RAM (= cols * lines * 2) in single malloc OLDWAY */
 };
 
 /* create 32 bit 8/8/8/8 format pixel (0xAARRGGBB) from RGB triplet*/
@@ -70,18 +71,27 @@ struct console {
 #define RGB2PIXELABGR(r,g,b)    \
     (0xFF000000UL | ((b) << 16) | ((g) << 8) | (r))
 
-struct sdl_window;
-
-int sdl_init(void);
-struct sdl_window *sdl_create_window(Drawable *dp);
-void sdl_draw(Drawable *dp, int x, int y, int width, int height);
-
+/* draw.c */
 Drawable *create_drawable(int pixtype, int width, int height);
 void draw_clear(Drawable *dp);
-void draw_flush(Drawable *dp);
 void draw_line(Drawable *dp, int x1, int y1, int x2, int y2);
 void draw_fill_rect(Drawable *dp, int x1, int y1, int x2, int y2);
 void draw_blit(Drawable *dst, int dst_x, int dst_y, int width, int height,
-               Drawable *src, int src_x, int src_y);
+    Drawable *src, int src_x, int src_y);
 void draw_blit_fast(Drawable *dst, int dst_x, int dst_y, int width, int height,
-               Drawable *src, int src_x, int src_y);
+    Drawable *src, int src_x, int src_y);
+void draw_flush(Drawable *dp, int x, int y, int width, int height);     /* in sdl.c */
+
+/* font.c */
+int draw_font_string(Drawable *dp, Font *font, char *text, int x, int y,
+    int xoff, int yoff, Pixel fg, Pixel bg, int drawbg, int rotangle);
+int draw_font_char(Drawable *dp, Font *font, int c, int x, int y, int xoff, int yoff,
+    Pixel fg, Pixel bg, int drawbg, int rotangle);
+Font *font_load_font(char *path);
+Font *console_load_font(struct console *con, char *path);
+
+/* console.c */
+struct console *create_console(int width, int height);
+int console_resize(struct console *con, int width, int height);
+void console_write(struct console *con, char *buf, size_t n);
+void draw_console(struct console *con, Drawable *dp, int x, int y, int flush);

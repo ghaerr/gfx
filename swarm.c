@@ -726,7 +726,7 @@ Animate()
     /* These variables are related to bouncing off of other windows. */
     int                 testx, testy;
     int                 BehindWindow;   /* TRUE if wasp is behind a window. */
-    Window              child;
+    Window              child = 0;
 
     /* These variables are related to mouse control of the wasp. */
     int                 garbage_int; /* for XQueryPointer */
@@ -999,7 +999,7 @@ int     *wxv, *wyv;
 int     BehindWindow;
 {
     int         testx, testy;
-    Window      child;
+    Window      child = 0;
 
 
     /* This makes the wasp avoid moving behind windows. */

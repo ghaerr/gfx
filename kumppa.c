@@ -365,7 +365,7 @@ static Bool InitializeAll(struct state *st)
   XGCValues xgcv;
   //XWindowAttributes xgwa;
 /*  XSetWindowAttributes xswa;*/
-  Colormap cmap;
+  Colormap cmap = 0;
   XColor color;
   int n,i;
   double rspeed;
@@ -533,6 +533,7 @@ kumppa_reshape (Display *dpy, Window window, void *closure,
   //return False;
 //}
 
+#if UNUSED
 static void
 kumppa_free (Display *dpy, Window window, void *closure)
 {
@@ -549,6 +550,7 @@ kumppa_free (Display *dpy, Window window, void *closure)
   free (st->rotateY);
   free (st);
 }
+#endif
 
 //XSCREENSAVER_MODULE ("Kumppa", kumppa)
 

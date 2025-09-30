@@ -12,12 +12,17 @@ CFLAGS += -O3
 CFLAGS += -Wall -Wno-missing-braces -Wno-unused-variable
 LDLIBS += -lSDL2
 
+# GFX files
+GFXOBJS = font.o console.o draw.o
+TERMOBJS = tmt.o mb.o openpty.o
+
 # generated font files
 GENFONTSRCS = fonts/cour_20x37_1.c fonts/cour_21x37_8.c fonts/cour_11x19_8.c
 GENFONTSRCS += fonts/unifont_8x16_1.c
 GENFONTSRCS += fonts/mssans_11x13_8.c
 GENFONTSRCS += fonts/times_30x37_8.c
 GENFONTOBJS = $(GENFONTSRCS:.c=.o)
+GENFONTOBJS += rom_8x16_1.o
 
 gfx: draw
 
@@ -58,14 +63,14 @@ fonts/times_30x37_8.o: fonts/times.ttf
 
 draw.o tmt.o: tmt.h
 
-draw: draw.o rom_8x16_1.o $(GENFONTOBJS) tmt.o mb.o openpty.o
+draw: main.o sdl.o $(GFXOBJS) $(GENFONTOBJS) tmt.o mb.o openpty.o
 	$(CC) -o $@ $^ $(LDLIBS)
 
-swarm: swarm.c x11.c draw.c rom_8x16_1.c
-	cc -DNOMAIN -o $@ $^ -lSDL2
+swarm: swarm.o x11.o draw.o sdl.o
+	$(CC) -o $@ $^ $(LDLIBS)
 
-kumppa: kumppa.c yarandom.c x11.c draw.c rom_8x16_1.c
-	cc -DNOMAIN -o $@ $^ -lSDL2
+kumppa: kumppa.o yarandom.o x11.o draw.o sdl.o
+	$(CC) -o $@ $^ $(LDLIBS)
 
 clean:
 	rm -f *.o fonts/*.o draw $(GENFONTSRCS) swarm kumppa

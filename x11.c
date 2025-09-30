@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "draw.h"
 #include "x11.h"
+#include "sdl.h"
 
 void ya_rand_init(int);
 
@@ -118,7 +119,7 @@ static int sdl_pollevent(void)
 
 int XSync(Display *dpy, Bool discard)
 {
-    draw_flush(dpy);
+    draw_flush(dpy, 0, 0, 0, 0);
     if (sdl_pollevent())
         exit(0);
     return 1;
