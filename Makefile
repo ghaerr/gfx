@@ -1,5 +1,6 @@
-# GFX graphics library
+# GFX graphics library Makefile
 
+#ELKS = 1
 ifdef ELKS
 CC = ia16-elf-gcc
 ELKSDIR = /Users/greg/net/elks-gh
@@ -12,9 +13,10 @@ CFLAGS += -O3
 CFLAGS += -Wall -Wno-missing-braces -Wno-unused-variable
 LDLIBS += -lSDL2
 
-# GFX files
+# GFX library files
 GFXOBJS = font.o console.o draw.o
 TERMOBJS = tmt.o mb.o openpty.o
+MAINOBJS = main.o sdl.o
 
 # generated font files
 GENFONTSRCS = fonts/cour_20x37_1.c fonts/cour_21x37_8.c fonts/cour_11x19_8.c
@@ -63,7 +65,7 @@ fonts/times_30x37_8.o: fonts/times.ttf
 
 draw.o tmt.o: tmt.h
 
-draw: main.o sdl.o $(GFXOBJS) $(GENFONTOBJS) tmt.o mb.o openpty.o
+draw: $(GFXOBJS) $(GENFONTOBJS) $(TERMOBJS) $(MAINOBJS)
 	$(CC) -o $@ $^ $(LDLIBS)
 
 swarm: swarm.o x11.o draw.o sdl.o

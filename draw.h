@@ -1,4 +1,4 @@
-/* GFX library header file */
+/* GFX library graphics drawing routines */
 #include <stdint.h>
 #include "font.h"
 #include "tmt.h"
@@ -65,11 +65,11 @@ struct console {
 
 /* create 32 bit 8/8/8/8 format pixel (0xAARRGGBB) from RGB triplet*/
 #define RGB2PIXELARGB(r,g,b)    \
-    (0xFF000000UL | ((r) << 16) | ((g) << 8) | (b))
+    ((uint32_t)0xFF000000 | (((uint32_t)r) << 16) | ((g) << 8) | (b))
 
 /* create 32 bit 8/8/8/8 format pixel (0xAABBGGRR) from RGB triplet*/
 #define RGB2PIXELABGR(r,g,b)    \
-    (0xFF000000UL | ((b) << 16) | ((g) << 8) | (r))
+    ((uint32_t)0xFF000000 | (((uint32_t)b) << 16) | ((g) << 8) | (r))
 
 /* draw.c */
 Drawable *create_drawable(int pixtype, int width, int height);

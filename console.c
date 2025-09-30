@@ -1,3 +1,4 @@
+/* GFX library console terminal display routines */
 #include <stdio.h>
 #include <string.h>
 #include "draw.h"
@@ -97,6 +98,7 @@ static void color_from_attr(Drawable *dp, unsigned int attr, Pixel *pfg, Pixel *
 
     switch (dp->pixtype) {
     case MWPF_TRUECOLORARGB:    /* byte order B G R A */
+    default:
         fgpixel = RGB2PIXELARGB(fg_red, fg_green, fg_blue);
         bgpixel = RGB2PIXELARGB(bg_red, bg_green, bg_blue);
         break;

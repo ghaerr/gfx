@@ -1,6 +1,6 @@
 /* Copyright (c) 2017 Rob King
  * All rights reserved.
- * Sep 2025 Enhancements by Greg Haerr
+ * Sep 2025 Enhancements for GFX library by Greg Haerr
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:

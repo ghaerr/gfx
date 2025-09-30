@@ -9,12 +9,8 @@
  * Sep 2025 Greg Haerr added ANSI terminal emulation and unicode
  */
 
-//#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-//#include <fcntl.h>
-//#include <unistd.h>
-//#include <sys/select.h>
 #include "draw.h"
 
 Drawable *create_drawable(int pixtype, int width, int height)

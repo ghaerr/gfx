@@ -1,3 +1,4 @@
+/* SDL backend for GFX library */
 #include "draw.h"
 #include <SDL2/SDL.h>
 
