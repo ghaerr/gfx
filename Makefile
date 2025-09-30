@@ -1,7 +1,15 @@
 # GFX graphics library
 
-CFLAGS = -Wall -Wno-missing-braces
-CFLAGS += -Wno-unused-variable -O3
+ifdef ELKS
+CC = ia16-elf-gcc
+ELKSDIR = /Users/greg/net/elks-gh
+CFLAGS += -melks-libc -mtune=i8086 -Os -mcmodel=small -DELKS=1
+CFLAGS += -I$(ELKSDIR)/libc/include -I$(ELKSDIR)/elks/include
+CFLAGS += -Wno-packed-bitfield-compat
+CFLAGS += -Os
+endif
+CFLAGS += -O3
+CFLAGS += -Wall -Wno-missing-braces -Wno-unused-variable
 LDLIBS += -lSDL2
 
 # generated font files

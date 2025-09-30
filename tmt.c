@@ -306,7 +306,8 @@ HANDLER(dsr)
 
 HANDLER(resetparser)
     memset(vt->pars, 0, sizeof(vt->pars));
-    vt->q = vt->ntitle = vt->state = vt->npar = vt->arg = vt->ignored = (bool)0;
+    vt->q = vt->ignored = false;
+    vt->state = vt->npar = vt->arg = vt->ntitle = 0;
 }
 
 HANDLER(consumearg)

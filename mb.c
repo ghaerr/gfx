@@ -25,6 +25,7 @@
 │  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                      │
 │                                                                              │
 ╚─────────────────────────────────────────────────────────────────────────────*/
+#include <stdint.h>
 #include <stdlib.h>
 #include <errno.h>
 #include "wchar.h"
@@ -34,7 +35,7 @@
 #define OOB(c,b) (((((b)>>3)-0x10)|(((b)>>3)+((int32_t)(c)>>26))) & ~7)
 
 /* Interval [a,b). Either a must be 80 or b must be c0, lower 3 bits clear. */
-#define R(a,b) ((uint32_t)((a==0x80 ? 0x40u-b : 0u-a) << 23))
+#define R(a,b) ((uint32_t)((a==0x80 ? (uint32_t)0x40u-b : (uint32_t)0u-a) << 23))
 #define FAILSTATE R(0x80,0x80)
 
 #define SA 0xc2u
@@ -100,7 +101,7 @@ size_t xmbrtowc(wchar_t *restrict wc, const char *restrict src, size_t n,
         if (OOB(c,*s)) goto ilseq;
 loop:
         c = c<<6 | *s++-0x80; n--;
-        if (!(c&(1U<<31))) {
+        if (!(c&((uint32_t)1U<<31))) {
             *(uint32_t *)st = 0;
             *wc = c;
             return N-n;
@@ -141,13 +142,16 @@ size_t xwcrtomb(char *restrict s, wchar_t wc, Mbstate_t *restrict st)
                 *s++ = 0x80 | ((wc>>6)&0x3f);
                 *s = 0x80 | (wc&0x3f);
                 return 3;
-        } else if ((uint32_t)wc-0x10000UL < 0x100000UL) {
+        }
+#if !ELKS
+	else if ((uint32_t)wc-(uint32_t)0x10000 < (uint32_t)0x100000) {
                 *s++ = 0xf0 | (wc>>18);
                 *s++ = 0x80 | ((wc>>12)&0x3f);
                 *s++ = 0x80 | ((wc>>6)&0x3f);
                 *s = 0x80 | (wc&0x3f);
                 return 4;
         }
+#endif
         errno = EILSEQ;
         return -1;
 }
