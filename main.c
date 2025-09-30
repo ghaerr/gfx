@@ -65,11 +65,7 @@ static int sdl_nextevent(struct console *con, struct console *con2)
                 case '{':   angle--;
                 same:
                             clear_screen(con->dp);
-#if OLDWAY
-                            update_dirty_region(con, 0, 0, con->cols, con->lines);
-#else
-                            tmt_dirty(con->vt, 0, 0, con->cols, con->lines);
-#endif
+                            console_dirty(con, 0, 0, con->cols, con->lines);
                             return 0;
                 case '}':   angle++; goto same;
                 }

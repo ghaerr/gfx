@@ -370,12 +370,23 @@ struct console *create_console(int width, int height)
     return con;
 }
 
+void console_dirty(struct console *con, int x, int y, int w, int h)
+{
+#if OLDWAY
+    update_dirty_region(con, 0, 0, con->cols, con->lines);
+#else
+    tmt_dirty(con->vt, 0, 0, con->cols, con->lines);
+#endif
+}
+
 int console_resize(struct console *con, int width, int height)
 {
     con->cols = width;
     con->lines = height;
     draw_clear(con->dp);
-#if !OLDWAY
+#if OLDWAY
+    return 0;           // FIXME fails to resize for OLDWAY
+#else
     return tmt_resize(con->vt, height, width);
 #endif
 }

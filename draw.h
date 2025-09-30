@@ -93,5 +93,6 @@ Font *console_load_font(struct console *con, char *path);
 /* console.c */
 struct console *create_console(int width, int height);
 int console_resize(struct console *con, int width, int height);
+void console_dirty(struct console *con, int x, int y, int w, int h);
 void console_write(struct console *con, char *buf, size_t n);
 void draw_console(struct console *con, Drawable *dp, int x, int y, int flush);
